@@ -234,7 +234,7 @@ sequenceDiagram
 
 ### 2. Clone the Repository
 ```bash
-git clone https://github.com/stevinjoseph2003/campusbites.git
+git clone https://github.com/Stevin5952/campusbites.git
 cd campusbites
 ```
 
