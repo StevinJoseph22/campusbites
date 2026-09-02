@@ -22,7 +22,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CampusBites — Multi-Vendor College Canteen Pre-Order",
+  title: "CampusBites",
   description: "Order from multiple canteen vendors in one combined cart and skip lunch lines.",
 };
 

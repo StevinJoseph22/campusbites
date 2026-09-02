@@ -1,12 +1,12 @@
 // CampusBites Prisma Database Schema
-// Datasource: SQLite (Instant Zero-Config Persistent Local Database)
+// Datasource: PostgreSQL (Supabase)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
