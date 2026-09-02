@@ -85,11 +85,11 @@ export default function SuperAdminPage() {
     return true;
   });
 
-  const handleExportToExcel = () => {
+  const handleExportToExcel = async () => {
     if (typeof window === "undefined") return;
     try {
-      const XLSX = require("xlsx");
-      
+      const ExcelJS = (await import("exceljs")).default;
+
       const summaryData = [
         { Metric: "Report Period Start", Value: startDate || "All Time" },
         { Metric: "Report Period End", Value: endDate || "All Time" },
@@ -155,14 +155,28 @@ export default function SuperAdminPage() {
         });
       });
 
-      const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-      const wsDetailed = XLSX.utils.json_to_sheet(detailedData);
+      const addSheet = (name: string, rows: Record<string, unknown>[]) => {
+        const sheet = workbook.addWorksheet(name);
+        if (rows.length > 0) {
+          sheet.columns = Object.keys(rows[0]).map((key) => ({ header: key, key }));
+          sheet.addRows(rows);
+        }
+      };
 
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, wsSummary, "Financial Summary");
-      XLSX.utils.book_append_sheet(wb, wsDetailed, "Order Details");
+      const workbook = new ExcelJS.Workbook();
+      addSheet("Financial Summary", summaryData);
+      addSheet("Order Details", detailedData);
 
-      XLSX.writeFile(wb, `CampusBites_Financial_Report_${Date.now()}.xlsx`);
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `CampusBites_Financial_Report_${Date.now()}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error("Excel generation failed", e);
     }
