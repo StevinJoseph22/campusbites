@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #F5F6F2;
+  --color-surface: #F8F9FC;
+  --color-cardstock: #ECEEE6;
+  --color-cardstock-hover: #E4E7DD;
+  --color-ink: #191C1E;
+  --color-ink-soft: #534437;
+  --color-marigold: #C8791E;
+  --color-marigold-hover: #A66418;
+  --color-sage: #3F7A55;
+  --color-sage-soft: #DCEBE0;
+  --color-chili: #B23A2A;
+  --color-chili-soft: #F5DCD6;
+
+  --ink-rgb: 25 28 30;
+
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+  --font-display: var(--font-fraunces), Georgia, serif;
+
+  /* Rounder, softer corners everywhere — every plain "rounded" in the app rides this */
+  --radius-xs: 6px;
+  --radius-sm: 12px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
+  --radius-3xl: 34px;
+}
+
+/* Dark theme — same warm/cozy identity, inverted. Follows the OS by default,
+   an explicit toggle (data-theme) always wins over prefers-color-scheme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-paper: #1B1815;
+    --color-surface: #221E19;
+    --color-cardstock: #2A2520;
+    --color-cardstock-hover: #332C24;
+    --color-ink: #F3EFE8;
+    --color-ink-soft: #B8AC9A;
+    --color-marigold: #E0954A;
+    --color-marigold-hover: #F0A860;
+    --color-sage: #6FAE83;
+    --color-sage-soft: #21362A;
+    --color-chili: #E2776A;
+    --color-chili-soft: #3A211D;
+    --ink-rgb: 243 239 232;
+  }
+}
+:root[data-theme="dark"] {
+  --color-paper: #1B1815;
+  --color-surface: #221E19;
+  --color-cardstock: #2A2520;
+  --color-cardstock-hover: #332C24;
+  --color-ink: #F3EFE8;
+  --color-ink-soft: #B8AC9A;
+  --color-marigold: #E0954A;
+  --color-marigold-hover: #F0A860;
+  --color-sage: #6FAE83;
+  --color-sage-soft: #21362A;
+  --color-chili: #E2776A;
+  --color-chili-soft: #3A211D;
+  --ink-rgb: 243 239 232;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Snappy, comfy press feedback on every interactive element, app-wide */
+  button, a, input, select, textarea {
+    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease,
+      box-shadow 0.18s ease, transform 0.12s ease;
+  }
+  button:not(:disabled):active, a:active {
+    transform: scale(0.97);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    button, a, input, select, textarea { transition: none; }
+    button:not(:disabled):active, a:active { transform: none; }
+  }
+}
+
+/* Menu-board card, the base surface for stall/dish/order cards — now soft-elevated, not flat */
+.card-surface {
+  background-color: var(--color-cardstock);
+  border: 1px solid rgb(var(--ink-rgb) / 0.08);
+  border-radius: 1.1rem;
+  box-shadow: 0 1px 2px rgb(var(--ink-rgb) / 0.04), 0 6px 16px -8px rgb(var(--ink-rgb) / 0.10);
+}
+
+/* Receipt-style leader line between a label and its price/value */
+.leader-row {
+  border-bottom: 1px dashed rgb(var(--ink-rgb) / 0.15);
+}
+
+/* Banner headline: reveals up on mount, like a menu board sliding a new line into place */
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-reveal-up {
+  animation: reveal-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Live stalls marquee: two copies of the track scroll together for a seamless loop */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee-scroll 22s linear infinite;
+}
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-reveal-up, .animate-marquee {
+    animation: none;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-paper);
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--ink-rgb) / 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--ink-rgb) / 0.35);
+}

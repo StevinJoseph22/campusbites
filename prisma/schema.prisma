@@ -1,0 +1,120 @@
+// CampusBites Prisma Database Schema
+// Datasource: PostgreSQL (Supabase)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique // Register number for students (e.g. 26bcaf59), or vendor/admin id
+  email        String   @unique // username@kristujayanti.com for students, or custom email
+  name         String?
+  passwordHash String   // Encrypted via bcryptjs
+  role         String   @default("STUDENT") // Roles: STUDENT, VENDOR, ADMIN
+  isTempPassword Boolean  @default(false)
+  campus         String?  @default("Airport Road Campus")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders Order[]
+}
+
+model OtpVerification {
+  id        String   @id @default(cuid())
+  email     String
+  otpCode   String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Restaurant {
+  id          String   @id @default(cuid())
+  name        String
+  tokenPrefix String
+  floor       String   @default("Ground Floor")
+  cuisine     String
+  rating      Float    @default(4.8)
+  logo        String
+  location    String
+  type        String   @default("PURE_VEG") // PURE_VEG or MIXED
+  pinCodeHash String   @default("123456") // Hashed or 6-digit PIN
+  isOpen      Boolean  @default(true)
+  campus      String   @default("Airport Road Campus")
+  createdAt   DateTime @default(now())
+
+  menuItems  MenuItem[]
+  orderItems OrderItem[]
+}
+
+model MenuItem {
+  id             String   @id @default(cuid())
+  restaurantId   String
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  price          Float
+  category       String   @default("Veg")
+  prepTime       Int      @default(10)
+  image          String?
+  isVeg          Boolean  @default(true)
+  takeawayCharge Float    @default(10)
+  stockCount     Int      @default(100)
+  stockType      String   @default("COUNTED") // COUNTED or UNLIMITED
+  available      Boolean  @default(true)
+  availableFrom  String   @default("10:00 AM")
+  isBestseller   Boolean  @default(false)
+  offerType      String   @default("NONE") // NONE, PERCENTAGE, FLAT
+  offerValue     Float    @default(0)
+  variants       String?  // JSON array of {label, price}, e.g. Steamed/Fried/Tandoori momo styles. null = no variants, single "price" field applies.
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  orderId         String   @unique
+  masterToken     String
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email           String?
+  studentName     String?
+  studentRegNumber String?
+  placedAt        String   @default("12:15 PM")
+  placedTimestamp BigInt?
+  paymentMethod   String   @default("UPI")
+  paymentStatus   String   @default("PAID")
+  totalAmount     Float
+  customerNotes   String?
+  createdAt       DateTime @default(now())
+
+  vendorPortions OrderItem[]
+}
+
+model OrderItem {
+  id             String     @id @default(cuid())
+  orderId        String
+  order          Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stallId        String
+  stall          Restaurant @relation(fields: [stallId], references: [id], onDelete: Cascade)
+  stallName      String
+  tokenNumber    String     @unique
+  pickupTimeSlot String
+  customerNotes  String?
+  itemsJson      String     // JSON string of items [{ name, price, quantity }]
+  subtotal       Float
+  status         String     @default("PLACED") // PINGING, PLACED, ACCEPTED, COOKING, PACKING, READY, FULFILLED, REFUNDED
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model SystemSetting {
+  id          String @id @default("default")
+  platformFee Float  @default(5.0)
+  takeawayFee Float  @default(10.0)
+}
