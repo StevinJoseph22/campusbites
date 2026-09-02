@@ -169,6 +169,8 @@ export default function VendorScanPage() {
           items={scannedReceiptOrder.items}
           subtotal={scannedReceiptOrder.subtotal}
           customerNotes={scannedReceiptOrder.customerNotes}
+          studentName={scannedReceiptOrder.studentName}
+          studentRegNumber={scannedReceiptOrder.studentRegNumber}
           status={scannedReceiptOrder.status}
           onClose={() => setScannedReceiptOrder(null)}
           onFulfill={() => handleFulfillScannedToken(scannedReceiptOrder.tokenNumber)}

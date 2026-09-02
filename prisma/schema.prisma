@@ -71,6 +71,7 @@ model MenuItem {
   isBestseller   Boolean  @default(false)
   offerType      String   @default("NONE") // NONE, PERCENTAGE, FLAT
   offerValue     Float    @default(0)
+  variants       String?  // JSON array of {label, price}, e.g. Steamed/Fried/Tandoori momo styles. null = no variants, single "price" field applies.
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -82,6 +83,8 @@ model Order {
   userId          String?
   user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   email           String?
+  studentName     String?
+  studentRegNumber String?
   placedAt        String   @default("12:15 PM")
   placedTimestamp BigInt?
   paymentMethod   String   @default("UPI")

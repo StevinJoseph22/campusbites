@@ -219,9 +219,9 @@ export default function Home() {
   });
 
   return (
-    <div className="min-h-screen bg-campus-mesh text-slate-100 flex flex-col pb-24 md:pb-12 selection:bg-orange-500 selection:text-white">
+    <div className="min-h-screen bg-paper text-ink flex flex-col pb-24 md:pb-12 selection:bg-marigold selection:text-white">
       {/* Header with Search and Cart props */}
-      <Navbar 
+      <Navbar
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
         searchQuery={searchQuery}
@@ -229,23 +229,23 @@ export default function Home() {
       />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 lg:px-8 py-6 space-y-8">
-        {/* Swiggy/Zomato Top Promo Banner */}
-        <div className="glass-panel p-5 sm:p-6 rounded-3xl border-slate-800 bg-gradient-to-r from-orange-950/40 via-slate-900 to-amber-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+        {/* Top Promo Banner */}
+        <div className="card-surface p-5 sm:p-6 rounded flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 inline-block">
-              ⚡ Pre-Order & Skip Lunch Queues
+            <span className="text-[11px] font-bold uppercase tracking-wider text-marigold bg-paper px-3 py-1 rounded border border-ink/15 inline-block">
+              Pre-Order & Skip Lunch Queues
             </span>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+            <h1 className="font-display text-xl sm:text-2xl font-semibold text-ink tracking-tight">
               Order from Multiple College Stalls in 1 Basket
             </h1>
-            <p className="text-xs text-slate-400 max-w-xl">
+            <p className="text-xs text-ink-soft max-w-xl">
               Select your lecture break time slot. Food is freshly prepared right as you arrive.
             </p>
           </div>
 
-          <button 
+          <button
             onClick={() => setIsCartOpen(true)}
-            className="btn-primary-gradient px-5 py-3 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 self-start sm:self-auto shadow-lg shadow-orange-500/20 shrink-0"
+            className="bg-marigold hover:bg-marigold-hover transition-colors px-5 py-3 rounded text-xs font-bold text-white flex items-center justify-center gap-2 self-start sm:self-auto shrink-0"
           >
             <ShoppingBag className="w-4 h-4" /> View Cart ({totalCartCount})
           </button>
@@ -257,10 +257,10 @@ export default function Home() {
             <button
               key={pill.id}
               onClick={() => setSelectedCategory(pill.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              className={`px-4 py-2 rounded text-xs font-bold whitespace-nowrap transition-all ${
                 selectedCategory === pill.id
-                  ? "bg-orange-500 text-white shadow-md shadow-orange-500/20"
-                  : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
+                  ? "bg-marigold text-white"
+                  : "bg-cardstock border border-ink/15 text-ink-soft hover:text-ink"
               }`}
             >
               {pill.label}
@@ -272,13 +272,13 @@ export default function Home() {
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
-                <Flame className="w-5 h-5 text-orange-500" /> Fast Selling Student Favorites
+              <h2 className="font-display text-lg sm:text-xl font-semibold text-ink flex items-center gap-2">
+                <Flame className="w-5 h-5 text-marigold" /> Fast Selling Student Favorites
               </h2>
-              <p className="text-xs text-slate-400">Popular dishes ready in under 10 minutes</p>
+              <p className="text-xs text-ink-soft">Popular dishes ready in under 10 minutes</p>
             </div>
 
-            <span className="text-xs text-slate-500 font-medium hidden sm:inline-block">
+            <span className="text-xs text-ink-soft font-medium hidden sm:inline-block">
               {filteredFoodItems.length} items available
             </span>
           </div>
@@ -297,13 +297,13 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Section 2: College Canteen Stalls / Restaurants */}
-        <section id="stalls" className="space-y-4 pt-4 border-t border-slate-900">
+        {/* Section 2: College Canteen Stalls / Restaurants — fixed "Seven Slots" grid, never paginated */}
+        <section id="stalls" className="space-y-4 pt-4 border-t border-dashed border-ink/15">
           <div>
-            <h2 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
-              <Store className="w-5 h-5 text-amber-500" /> College Canteen Stalls
+            <h2 className="font-display text-lg sm:text-xl font-semibold text-ink flex items-center gap-2">
+              <Store className="w-5 h-5 text-marigold" /> College Canteen Stalls
             </h2>
-            <p className="text-xs text-slate-400">Browse stalls in North Campus food court</p>
+            <p className="text-xs text-ink-soft">Browse stalls in North Campus food court</p>
           </div>
 
           {/* Equal Height Grid */}

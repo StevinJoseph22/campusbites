@@ -28,6 +28,20 @@ declare global {
   }
 }
 
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && window.Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 const timeSlots = (() => {
   const slots: string[] = [];
   let currentHour = 10;
@@ -83,6 +97,13 @@ export default function CheckoutPage() {
   const [settingsPlatformFee, setSettingsPlatformFee] = useState(5.0);
   const [settingsTakeawayFee, setSettingsTakeawayFee] = useState(10.0);
   const [slotCounts, setSlotCounts] = useState<Record<string, number>>({});
+
+  React.useEffect(() => {
+    const reg = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
+    if (!reg) {
+      router.push("/login?redirect=/student/checkout");
+    }
+  }, [router]);
 
   React.useEffect(() => {
     const loadFeesAndSlots = async () => {
@@ -166,7 +187,8 @@ export default function CheckoutPage() {
           return;
         }
         
-        const dbItem = menuData.items.find((i: any) => i.id === item.id);
+        const baseItemId = item.id.includes("::") ? item.id.split("::")[0] : item.id;
+        const dbItem = menuData.items.find((i: any) => i.id === baseItemId);
         if (!dbItem) {
           setErrorMessage(`⚠️ "${item.name}" is no longer on the canteen menu!`);
           setIsProcessing(false);
@@ -191,7 +213,7 @@ export default function CheckoutPage() {
         }
       }
 
-      // 1. Create order on backend
+      // 1. Create a real order on Razorpay via our backend
       const res = await fetch("/api/razorpay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -207,6 +229,66 @@ export default function CheckoutPage() {
       if (!data.success) {
         setErrorMessage(data.error || "Failed to initialize Razorpay checkout");
         setIsProcessing(false);
+        return;
+      }
+
+      // 2. Load Razorpay's checkout widget and actually collect payment
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        setErrorMessage("Could not load Razorpay checkout. Check your connection and try again.");
+        setIsProcessing(false);
+        return;
+      }
+
+      const regNumForPrefill = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
+      const emailForPrefill = (typeof window !== "undefined" ? localStorage.getItem("campusbites_user_phone") : null) || (regNumForPrefill ? `${regNumForPrefill}@kristujayanti.com` : undefined);
+
+      const razorpay = new window.Razorpay({
+        key: data.key,
+        amount: data.order.amount,
+        currency: data.order.currency,
+        order_id: data.order.id,
+        name: "CampusBites",
+        description: "Campus canteen order",
+        prefill: emailForPrefill ? { email: emailForPrefill } : undefined,
+        theme: { color: "#C8791E" },
+        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+          await finalizeOrder(response);
+        },
+        modal: {
+          ondismiss: () => {
+            setIsProcessing(false);
+            setErrorMessage("Payment was cancelled. No amount was charged.");
+          }
+        }
+      });
+
+      razorpay.on("payment.failed", () => {
+        setIsProcessing(false);
+        setErrorMessage("Payment failed. Please try again.");
+      });
+
+      razorpay.open();
+    } catch (err: any) {
+      console.error(err);
+      setIsProcessing(false);
+      setErrorMessage(err.message || "Payment encountered an error. Please try again.");
+    }
+  };
+
+  const finalizeOrder = async (paymentResponse: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+    try {
+      // 3. Verify the payment signature with our backend before treating the order as paid
+      const verifyRes = await fetch("/api/razorpay/verify-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(paymentResponse)
+      });
+      const verifyData = await verifyRes.json();
+
+      if (!verifyRes.ok || !verifyData.success || !verifyData.verified) {
+        setIsProcessing(false);
+        setErrorMessage("Payment could not be verified. If money was deducted, it will be refunded — please contact support.");
         return;
       }
 
@@ -244,7 +326,7 @@ export default function CheckoutPage() {
         masterToken: `KJU-MASTER-${Math.floor(1000 + Math.random() * 9000)}`,
         placedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         placedTimestamp: Date.now(),
-        paymentMethod: "Razorpay UPI / Card (Test Mode)",
+        paymentMethod: `Razorpay (Payment ID: ${paymentResponse.razorpay_payment_id})`,
         paymentStatus: "PAID",
         totalAmount: calculatedTotal,
         customerNotes,
@@ -261,7 +343,9 @@ export default function CheckoutPage() {
           totalAmount: calculatedTotal,
           customerNotes,
           vendorPortions,
-          email: userPhone
+          email: userPhone,
+          studentName: typeof window !== "undefined" ? localStorage.getItem("campusbites_user_name") : null,
+          studentRegNumber: regNum
         })
       });
 
@@ -286,12 +370,12 @@ export default function CheckoutPage() {
 
   if (cartItems.length === 0) {
     return (
-      <div className="min-h-screen bg-campus-mesh text-slate-100 flex flex-col justify-center items-center p-4">
-        <div className="glass-panel p-8 rounded-3xl text-center space-y-4 max-w-md border-slate-800">
-          <AlertCircle className="w-10 h-10 text-orange-400 mx-auto" />
-          <h2 className="text-lg font-bold text-white">Your Cart is Empty</h2>
-          <p className="text-xs text-slate-400">Add dishes from canteens before proceeding to checkout.</p>
-          <Link href="/student/dashboard" className="btn-primary-gradient px-5 py-2.5 rounded-xl text-xs font-bold text-white inline-block">
+      <div className="min-h-screen bg-paper text-ink flex flex-col justify-center items-center p-4">
+        <div className="card-surface p-8 text-center space-y-4 max-w-md">
+          <AlertCircle className="w-10 h-10 text-marigold mx-auto" />
+          <h2 className="font-display text-lg font-bold text-ink">Your Cart is Empty</h2>
+          <p className="text-xs text-ink-soft">Add dishes from canteens before proceeding to checkout.</p>
+          <Link href="/student/dashboard" className="bg-marigold hover:bg-marigold-hover px-5 py-2.5 rounded text-xs font-bold text-white inline-block transition-colors">
             Browse Canteen Stalls
           </Link>
         </div>
@@ -300,52 +384,52 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-campus-mesh text-slate-100 flex flex-col pb-16">
+    <div className="min-h-screen bg-paper text-ink flex flex-col pb-16">
       <Navbar />
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 lg:px-8 py-6 space-y-6">
-        <Link 
-          href="/student/cart" 
-          className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+        <Link
+          href="/student/cart"
+          className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-ink transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Cart Summary
         </Link>
 
-        <div className="glass-panel p-6 rounded-3xl border-slate-800 space-y-2">
-          <span className="text-[10px] text-orange-400 font-bold uppercase tracking-wider block">Final Step</span>
-          <h1 className="text-xl sm:text-2xl font-black text-white">
+        <div className="card-surface p-6 space-y-2">
+          <span className="text-[10px] text-marigold font-bold uppercase tracking-wider block">Final Step</span>
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">
             Razorpay Secure Checkout & Slot Selection
           </h1>
-          <p className="text-xs text-slate-400">
-            Selected Service Mode: <strong className="text-orange-400 font-bold">{orderType}</strong>
+          <p className="text-xs text-ink-soft">
+            Selected Service Mode: <strong className="text-marigold font-bold">{orderType}</strong>
           </p>
         </div>
 
         {errorMessage && (
-          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold text-center">
+          <div className="p-4 rounded bg-chili-soft border border-chili/30 text-chili text-xs font-bold text-center">
             {errorMessage}
           </div>
         )}
 
         <form onSubmit={handleRazorpayPayment} className="space-y-6">
           {/* Pickup Slot Selection */}
-          <div className="glass-panel p-6 rounded-3xl border-slate-800 space-y-3">
-            <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-orange-400" /> Select 15-Minute Pickup Time Slot:
+          <div className="card-surface p-6 space-y-3">
+            <h3 className="font-display text-sm font-bold text-ink flex items-center gap-2">
+              <Clock className="w-4 h-4 text-marigold" /> Select 15-Minute Pickup Time Slot:
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-bold font-sans">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-bold">
               {timeSlots.map((slot) => {
                 const count = slotCounts[slot] || 0;
-                let statusText = "🟢 Fast Pick (Rush Less)";
-                let statusColorClass = "text-emerald-400 border-emerald-500/20 bg-emerald-500/5";
+                let statusText = "Fast Pick (Rush Less)";
+                let statusColorClass = "text-sage border-sage/30 bg-sage-soft";
 
                 if (count >= 5) {
-                  statusText = `🔥 High Rush (${count} orders)`;
-                  statusColorClass = "text-rose-400 border-rose-500/20 bg-rose-500/5";
+                  statusText = `High Rush (${count} orders)`;
+                  statusColorClass = "text-chili border-chili/30 bg-chili-soft";
                 } else if (count > 0) {
-                  statusText = `⚡ Moderate (${count})`;
-                  statusColorClass = "text-amber-400 border-amber-500/20 bg-amber-500/5";
+                  statusText = `Moderate (${count})`;
+                  statusColorClass = "text-marigold border-marigold/30 bg-marigold/10";
                 }
 
                 return (
@@ -353,14 +437,14 @@ export default function CheckoutPage() {
                     key={slot}
                     type="button"
                     onClick={() => setSelectedSlot(slot)}
-                    className={`p-3.5 rounded-2xl border transition-all text-left flex flex-col justify-between gap-2.5 ${
+                    className={`p-3.5 rounded border transition-all text-left flex flex-col justify-between gap-2.5 ${
                       selectedSlot === slot
-                        ? "bg-orange-500/20 border-orange-500 text-orange-400 shadow-md shadow-orange-500/20 ring-1 ring-orange-500"
-                        : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+                        ? "bg-marigold/10 border-marigold text-ink"
+                        : "bg-paper border-ink/15 text-ink-soft hover:text-ink"
                     }`}
                   >
-                    <span className="text-xs font-black text-slate-100">{slot}</span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border w-fit ${statusColorClass}`}>
+                    <span className="text-xs font-mono font-bold text-ink">{slot}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit ${statusColorClass}`}>
                       {statusText}
                     </span>
                   </button>
@@ -370,55 +454,55 @@ export default function CheckoutPage() {
           </div>
 
           {/* Smart Kitchen ETA Estimator */}
-          <div className="glass-panel p-5 rounded-3xl border-slate-850 bg-slate-950/40 flex items-center justify-between gap-4">
+          <div className="card-surface p-5 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-orange-400" />
+              <div className="w-10 h-10 rounded bg-marigold/10 text-marigold flex items-center justify-center">
+                <Clock className="w-5 h-5 text-marigold" />
               </div>
               <div>
-                <p className="text-xs font-black text-white">Smart Kitchen ETA Estimator</p>
-                <p className="text-[11px] text-slate-400">
-                  {(slotCounts[selectedSlot] || 0) >= 5 
-                    ? `⚠️ High volume in this slot! Expect +15 mins preparation delay.` 
-                    : (slotCounts[selectedSlot] || 0) > 0 
-                      ? `⚡ Moderate volume. Standard preparation times apply.` 
-                      : `🟢 Canteen queue is clear! Chefs can pack your order instantly.`}
+                <p className="text-xs font-bold text-ink">Smart Kitchen ETA Estimator</p>
+                <p className="text-[11px] text-ink-soft">
+                  {(slotCounts[selectedSlot] || 0) >= 5
+                    ? `High volume in this slot! Expect +15 mins preparation delay.`
+                    : (slotCounts[selectedSlot] || 0) > 0
+                      ? `Moderate volume. Standard preparation times apply.`
+                      : `Canteen queue is clear! Chefs can pack your order instantly.`}
                 </p>
               </div>
             </div>
             <div className="text-right shrink-0 font-bold">
-              <span className="text-xs font-black text-orange-400 block">
+              <span className="text-xs font-mono font-bold text-marigold block">
                 +{(slotCounts[selectedSlot] || 0) >= 5 ? "15" : (slotCounts[selectedSlot] || 0) > 0 ? "5" : "0"} mins
               </span>
-              <span className="text-[8px] text-slate-500 font-mono uppercase tracking-wider">Wait Buffer</span>
+              <span className="text-[8px] text-ink-soft font-mono uppercase tracking-wider">Wait Buffer</span>
             </div>
           </div>
 
           {/* Customer Cooking Notes */}
-          <div className="glass-panel p-6 rounded-3xl border-slate-800 space-y-2">
-            <label className="text-sm font-extrabold text-white flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-orange-400" /> Optional Special Cooking Instructions:
+          <div className="card-surface p-6 space-y-2">
+            <label className="text-sm font-bold text-ink flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-marigold" /> Optional Special Cooking Instructions:
             </label>
             <textarea
               rows={2}
               value={customerNotes}
               onChange={(e) => setCustomerNotes(e.target.value)}
               placeholder="e.g. Extra spicy, no onions, extra mayonnaise..."
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+              className="w-full bg-paper border border-ink/15 rounded p-3 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold"
             />
           </div>
 
           {/* Order Summary & Payment Button */}
-          <div className="glass-panel p-6 rounded-3xl border-slate-800 space-y-4">
-            <div className="flex justify-between items-center text-sm font-extrabold text-white border-b border-slate-800 pb-3">
+          <div className="card-surface p-6 space-y-4">
+            <div className="flex justify-between items-center text-sm font-bold text-ink border-b border-dashed border-ink/15 pb-3">
               <span>Total Payable Amount</span>
-              <span className="text-xl font-black text-orange-400">₹{calculatedTotal}</span>
+              <span className="text-xl font-mono font-bold text-marigold">₹{calculatedTotal}</span>
             </div>
 
             <button
               type="submit"
               disabled={isProcessing}
-              className="w-full btn-primary-gradient py-4 text-sm font-extrabold text-white rounded-2xl shadow-xl shadow-orange-500/25 flex items-center justify-center gap-2 transition-transform active:scale-98"
+              className="w-full bg-marigold hover:bg-marigold-hover disabled:opacity-60 py-4 text-sm font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
             >
               <CreditCard className="w-5 h-5" />
               <span>{isProcessing ? "Connecting to Razorpay..." : `Proceed to Pay ₹${calculatedTotal} via Razorpay →`}</span>

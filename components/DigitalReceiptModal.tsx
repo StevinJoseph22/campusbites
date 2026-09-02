@@ -26,6 +26,8 @@ interface DigitalReceiptProps {
   }>;
   subtotal: number;
   customerNotes?: string;
+  studentName?: string | null;
+  studentRegNumber?: string | null;
   placedAt?: string;
   paymentMethod?: string;
   status: string;
@@ -41,6 +43,8 @@ export function DigitalReceiptModal({
   items,
   subtotal,
   customerNotes,
+  studentName,
+  studentRegNumber,
   placedAt = "12:15 PM",
   paymentMethod = "UPI",
   status,
@@ -90,6 +94,20 @@ export function DigitalReceiptModal({
             {tokenNumber}
           </span>
         </div>
+
+        {/* Student Identity */}
+        {(studentName || studentRegNumber) && (
+          <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+            <div>
+              <span className="text-[10px] text-slate-400 font-bold block">Student</span>
+              <p className="font-bold text-white">{studentName || "—"}</p>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 font-bold block">Roll Number</span>
+              <p className="font-mono font-bold text-orange-400">{studentRegNumber || "—"}</p>
+            </div>
+          </div>
+        )}
 
         {/* Details Grid */}
         <div className="grid grid-cols-2 gap-3 text-xs">

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { RESTAURANT_ACCOUNTS } from "@/lib/restaurants-data";
 import { PageLoader } from "@/components/PageLoader";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function LoginPage() {
 
   // Student Registration States
   const [registerRegNumber, setRegisterRegNumber] = useState("");
+  const [registerName, setRegisterName] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
   const [registerOtp, setRegisterOtp] = useState("");
@@ -53,6 +55,17 @@ export default function LoginPage() {
   const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSuccess, setSetupSuccess] = useState<string | null>(null);
+
+  // First-time STUDENT setup: same idea as vendor setup, but OTP-gated since
+  // every student starts on the same shared default password.
+  const [showStudentFirstLoginModal, setShowStudentFirstLoginModal] = useState(false);
+  const [firstLoginEmail, setFirstLoginEmail] = useState("");
+  const [firstLoginOtp, setFirstLoginOtp] = useState("");
+  const [firstLoginPassword, setFirstLoginPassword] = useState("");
+  const [firstLoginConfirmPassword, setFirstLoginConfirmPassword] = useState("");
+  const [firstLoginError, setFirstLoginError] = useState<string | null>(null);
+  const [firstLoginSuccess, setFirstLoginSuccess] = useState<string | null>(null);
+  const [isResendingFirstLoginOtp, setIsResendingFirstLoginOtp] = useState(false);
 
   // Direct Username & Password Login Handler
   const handleLogin = async (e: React.FormEvent) => {
@@ -85,11 +98,35 @@ export default function LoginPage() {
       if (data.success) {
         if (data.requiresPasswordSetup) {
           setLoadingState(null);
-          setSetupUsername(data.user.username);
-          setShowSetupModal(true);
+          if (data.user.role === "VENDOR") {
+            setSetupUsername(data.user.username);
+            setShowSetupModal(true);
+          } else {
+            // Students share a default password, so first login is OTP-gated:
+            // fire the verification email immediately and open the reset modal.
+            setFirstLoginEmail(data.user.email);
+            setShowStudentFirstLoginModal(true);
+            setIsResendingFirstLoginOtp(true);
+            fetch("/api/auth/send-email-otp", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: data.user.email })
+            })
+              .then(res => res.json())
+              .then(otpData => {
+                setIsResendingFirstLoginOtp(false);
+                if (!otpData.success) {
+                  setFirstLoginError(otpData.error || "Failed to send verification email.");
+                }
+              })
+              .catch(err => {
+                setIsResendingFirstLoginOtp(false);
+                setFirstLoginError("Failed to send verification email: " + err.message);
+              });
+          }
           return;
         }
-        
+
         setLoadingState({
           active: true,
           message: "Access Granted",
@@ -110,7 +147,8 @@ export default function LoginPage() {
         } else if (data.user.role === "ADMIN") {
           setTimeout(() => router.push("/admin"), 1200);
         } else {
-          setTimeout(() => router.push("/student/dashboard"), 1200);
+          const redirectTo = (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("redirect")) || "/student/dashboard";
+          setTimeout(() => router.push(redirectTo), 1200);
         }
       } else {
         setLoadingState(null);
@@ -160,6 +198,10 @@ export default function LoginPage() {
   // Student First-Time Register Submit
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!registerName.trim()) {
+      setErrorMessage("Please enter your full name.");
+      return;
+    }
     if (!registerOtp || !registerPassword) {
       setErrorMessage("Please enter the verification OTP and choose a password.");
       return;
@@ -183,6 +225,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: registerRegNumber.trim(),
+          name: registerName.trim(),
           password: registerPassword.trim(),
           otp: registerOtp.trim(),
           campus: registerCampus
@@ -329,34 +372,99 @@ export default function LoginPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-campus-mesh text-slate-100 flex flex-col justify-center items-center p-4 py-8 relative overflow-hidden">
-      {/* Live ambient glowing backlights */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-orange-500/10 rounded-full blur-[100px] pointer-events-none animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px] pointer-events-none animate-pulse" />
+  const handleResendFirstLoginOtp = async () => {
+    setIsResendingFirstLoginOtp(true);
+    setFirstLoginError(null);
+    try {
+      const res = await fetch("/api/auth/send-email-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: firstLoginEmail })
+      });
+      const data = await res.json();
+      setIsResendingFirstLoginOtp(false);
+      if (data.success) {
+        setFirstLoginSuccess(`Verification code resent to ${firstLoginEmail}.`);
+      } else {
+        setFirstLoginError(data.error || "Failed to resend verification email.");
+      }
+    } catch (err: any) {
+      setIsResendingFirstLoginOtp(false);
+      setFirstLoginError("Network error: " + err.message);
+    }
+  };
 
-      <div className="glass-panel w-full max-w-md rounded-3xl border-slate-800 bg-slate-900/95 p-6 sm:p-8 space-y-6 shadow-2xl border relative z-10">
-        
+  const handleStudentFirstLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (firstLoginPassword.length < 6) {
+      setFirstLoginError("Password must be at least 6 characters long.");
+      return;
+    }
+    if (firstLoginPassword !== firstLoginConfirmPassword) {
+      setFirstLoginError("Passwords do not match.");
+      return;
+    }
+
+    setFirstLoginError(null);
+    setFirstLoginSuccess(null);
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: firstLoginEmail,
+          otp: firstLoginOtp.trim(),
+          newPassword: firstLoginPassword
+        })
+      });
+      const data = await res.json();
+      setIsLoading(false);
+
+      if (data.success) {
+        setFirstLoginSuccess("Password set successfully! You can now log in using your new password.");
+        setTimeout(() => {
+          setShowStudentFirstLoginModal(false);
+          setFirstLoginOtp("");
+          setFirstLoginPassword("");
+          setFirstLoginConfirmPassword("");
+          setSuccessMessage("Setup complete. Please log in using your new password.");
+        }, 2000);
+      } else {
+        setFirstLoginError(data.error || "Failed to verify code and save password.");
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      setFirstLoginError("Network error: " + err.message);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-paper text-ink flex flex-col justify-center items-center p-4 py-8 relative">
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
+      <div className="card-surface w-full max-w-md p-6 sm:p-8 space-y-6 relative z-10">
+
         {/* Logo and Kristu Jayanti Branding */}
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 p-0.5 mx-auto shadow-lg shadow-orange-500/35 relative overflow-hidden group">
-            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center text-orange-400">
-              <Mail className="w-8 h-8 animate-pulse" />
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+          <div className="w-16 h-16 rounded bg-surface border border-ink/15 mx-auto flex items-center justify-center text-marigold">
+            <Mail className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">Kristu Jayanti University</h1>
-          <p className="text-xs text-orange-400 font-bold uppercase tracking-wider">CampusBites Canteen Hub</p>
+          <h1 className="font-display text-2xl font-semibold text-ink tracking-tight">Kristu Jayanti University</h1>
+          <p className="text-xs text-marigold font-bold uppercase tracking-wider">CampusBites Canteen Hub</p>
         </div>
 
         {errorMessage && (
-          <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold text-center">
+          <div className="p-3.5 rounded bg-chili-soft border border-chili/30 text-chili text-xs font-bold text-center">
             {errorMessage}
           </div>
         )}
 
         {successMessage && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold text-center">
+          <div className="p-3.5 rounded bg-sage-soft border border-sage/30 text-sage text-xs font-bold text-center">
             {successMessage}
           </div>
         )}
@@ -365,36 +473,36 @@ export default function LoginPage() {
         {authMode === "LOGIN" && (
           <form onSubmit={handleLogin} className="space-y-4 text-xs">
             <div className="space-y-1.5">
-              <label className="font-extrabold text-slate-300">Username / Register Number</label>
+              <label className="font-bold text-ink-soft">Username / Register Number</label>
               <div className="relative flex items-center">
-                <User className="w-4 h-4 text-slate-500 absolute left-3.5" />
+                <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
                 <input
                   type="text"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="e.g. 26bcaf59 (Student) or vendor-1"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500 font-medium tracking-wide transition-all"
+                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-medium tracking-wide transition-all"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-extrabold text-slate-300">Account Password</label>
+              <label className="font-bold text-ink-soft">Account Password</label>
               <div className="relative flex items-center">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5" />
+                <Lock className="w-4 h-4 text-ink-soft absolute left-3.5" />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-10 py-3 text-white text-xs focus:outline-none focus:border-orange-500 font-medium tracking-wide transition-all"
+                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-10 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-medium tracking-wide transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3 text-ink-soft hover:text-ink"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -404,12 +512,12 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full btn-primary-gradient py-3.5 text-xs font-extrabold text-white rounded-xl shadow-xl shadow-orange-500/25 flex items-center justify-center gap-2 transform active:scale-95 transition-all"
+              className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
             >
               <span>{isLoading ? "Validating Credentials..." : "Authenticate & Access Portal →"}</span>
             </button>
 
-            <div className="flex justify-between items-center pt-2 text-[11px] font-bold text-slate-400">
+            <div className="flex justify-between items-center pt-2 text-[11px] font-bold text-ink-soft">
               <button
                 type="button"
                 onClick={() => {
@@ -417,7 +525,7 @@ export default function LoginPage() {
                   setErrorMessage(null);
                   setSuccessMessage(null);
                 }}
-                className="hover:text-orange-400 transition-colors"
+                className="hover:text-marigold transition-colors"
               >
                 Register Student Account
               </button>
@@ -428,7 +536,7 @@ export default function LoginPage() {
                   setErrorMessage(null);
                   setSuccessMessage(null);
                 }}
-                className="hover:text-orange-400 transition-colors"
+                className="hover:text-marigold transition-colors"
               >
                 Forgot Password?
               </button>
@@ -440,9 +548,9 @@ export default function LoginPage() {
         {authMode === "REGISTER" && (
           <form onSubmit={isRegisterOtpSent ? handleRegisterSubmit : handleSendRegisterOtp} className="space-y-4 text-xs">
             <div className="space-y-1.5">
-              <label className="font-extrabold text-slate-300">Student Register Number</label>
+              <label className="font-bold text-ink-soft">Student Register Number</label>
               <div className="relative flex items-center">
-                <User className="w-4 h-4 text-slate-500 absolute left-3.5" />
+                <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
                 <input
                   type="text"
                   required
@@ -450,18 +558,18 @@ export default function LoginPage() {
                   value={registerRegNumber}
                   onChange={(e) => setRegisterRegNumber(e.target.value)}
                   placeholder="e.g. 26bcaf59"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500 font-bold"
+                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-extrabold text-slate-300">Choose Campus Location</label>
+              <label className="font-bold text-ink-soft">Choose Campus Location</label>
               <select
                 disabled={isRegisterOtpSent}
                 value={registerCampus}
                 onChange={(e) => setRegisterCampus(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-orange-500 font-extrabold"
+                className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
               >
                 <option value="Central Campus">Kristu Jayanti University (Central Campus)</option>
                 <option value="Airport Road Campus">Kristu Jayanti University (Airport Road Campus)</option>
@@ -471,7 +579,7 @@ export default function LoginPage() {
             {isRegisterOtpSent && (
               <>
                 <div className="space-y-1.5">
-                  <label className="font-extrabold text-slate-300">Enter 4-Digit Email OTP</label>
+                  <label className="font-bold text-ink-soft">Enter 4-Digit Email OTP</label>
                   <input
                     type="text"
                     maxLength={4}
@@ -479,31 +587,46 @@ export default function LoginPage() {
                     value={registerOtp}
                     onChange={(e) => setRegisterOtp(e.target.value)}
                     placeholder="4-digit OTP"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-center text-lg font-mono font-bold tracking-widest text-white focus:outline-none focus:border-orange-500"
+                    className="w-full bg-paper border border-ink/15 rounded p-3 text-center text-lg font-mono font-bold tracking-widest text-ink focus:outline-none focus:border-marigold"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-extrabold text-slate-300">Choose Secure Password</label>
+                  <label className="font-bold text-ink-soft">Full Name</label>
+                  <div className="relative flex items-center">
+                    <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
+                    <input
+                      type="text"
+                      required
+                      value={registerName}
+                      onChange={(e) => setRegisterName(e.target.value)}
+                      placeholder="e.g. Aditya Sharma"
+                      className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-ink-soft">Choose Secure Password</label>
                   <input
                     type="password"
                     required
                     value={registerPassword}
                     onChange={(e) => setRegisterPassword(e.target.value)}
                     placeholder="At least 6 characters"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-orange-500"
+                    className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-extrabold text-slate-300">Confirm Password</label>
+                  <label className="font-bold text-ink-soft">Confirm Password</label>
                   <input
                     type="password"
                     required
                     value={registerConfirmPassword}
                     onChange={(e) => setRegisterConfirmPassword(e.target.value)}
                     placeholder="Re-enter password"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-orange-500"
+                    className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold"
                   />
                 </div>
               </>
@@ -512,7 +635,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full btn-primary-gradient py-3.5 text-xs font-extrabold text-white rounded-xl shadow-md flex items-center justify-center gap-2"
+              className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
             >
               <span>{isRegisterOtpSent ? "Confirm Registration" : "Send Verification OTP Email"}</span>
             </button>
@@ -526,7 +649,7 @@ export default function LoginPage() {
                   setErrorMessage(null);
                   setSuccessMessage(null);
                 }}
-                className="text-[11px] text-slate-400 hover:text-white transition-colors"
+                className="text-[11px] text-ink-soft hover:text-ink transition-colors"
               >
                 ← Back to Login
               </button>
@@ -538,9 +661,9 @@ export default function LoginPage() {
         {authMode === "FORGOT" && (
           <form onSubmit={isOtpSent ? handleVerifyAndResetPassword : handleSendResetOtp} className="space-y-4 text-xs">
             <div className="space-y-1.5">
-              <label className="font-extrabold text-slate-300">Student Register Number</label>
+              <label className="font-bold text-ink-soft">Student Register Number</label>
               <div className="relative flex items-center">
-                <User className="w-4 h-4 text-slate-500 absolute left-3.5" />
+                <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
                 <input
                   type="text"
                   required
@@ -548,7 +671,7 @@ export default function LoginPage() {
                   value={resetRegNumber}
                   onChange={(e) => setResetRegNumber(e.target.value)}
                   placeholder="e.g. 26bcaf59"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500 font-bold"
+                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
                 />
               </div>
             </div>
@@ -556,7 +679,7 @@ export default function LoginPage() {
             {isOtpSent && (
               <>
                 <div className="space-y-1.5">
-                  <label className="font-extrabold text-slate-300">Enter 4-Digit Email OTP</label>
+                  <label className="font-bold text-ink-soft">Enter 4-Digit Email OTP</label>
                   <input
                     type="text"
                     maxLength={4}
@@ -564,19 +687,19 @@ export default function LoginPage() {
                     value={resetOtp}
                     onChange={(e) => setResetOtp(e.target.value)}
                     placeholder="4-digit OTP"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-center text-lg font-mono font-bold tracking-widest text-white focus:outline-none focus:border-orange-500"
+                    className="w-full bg-paper border border-ink/15 rounded p-3 text-center text-lg font-mono font-bold tracking-widest text-ink focus:outline-none focus:border-marigold"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-extrabold text-slate-300">New Password</label>
+                  <label className="font-bold text-ink-soft">New Password</label>
                   <input
                     type="password"
                     required
                     value={resetPassword}
                     onChange={(e) => setResetPassword(e.target.value)}
                     placeholder="Enter new secure password"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-orange-500"
+                    className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold"
                   />
                 </div>
               </>
@@ -585,7 +708,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full btn-primary-gradient py-3.5 text-xs font-extrabold text-white rounded-xl shadow-md flex items-center justify-center gap-2"
+              className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
             >
               <span>{isOtpSent ? "Reset & Update Password" : "Send Verification OTP Email"}</span>
             </button>
@@ -599,7 +722,7 @@ export default function LoginPage() {
                   setErrorMessage(null);
                   setSuccessMessage(null);
                 }}
-                className="text-[11px] text-slate-400 hover:text-white transition-colors"
+                className="text-[11px] text-ink-soft hover:text-ink transition-colors"
               >
                 ← Back to Login
               </button>
@@ -610,78 +733,170 @@ export default function LoginPage() {
 
       {/* FIRST-TIME VENDOR PASSWORD SETUP MODAL */}
       {showSetupModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="glass-panel w-full max-w-md rounded-3xl border-slate-700 bg-slate-900 p-6 space-y-4 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-extrabold text-white flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-orange-400" /> First-Time Vendor Setup
+        <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4">
+          <div className="card-surface w-full max-w-md p-6 space-y-4 relative">
+            <div className="flex items-center justify-between border-b border-dashed border-ink/15 pb-3">
+              <h3 className="text-sm font-bold text-ink flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-marigold" /> First-Time Vendor Setup
               </h3>
-              <button 
+              <button
                 onClick={() => setShowSetupModal(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-ink-soft hover:text-ink"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-[11px] text-slate-400 leading-relaxed">
+            <p className="text-[11px] text-ink-soft leading-relaxed">
               Your account has been verified using the registration passcode! Please configure your permanent login password below.
             </p>
 
             {setupError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-bold">
-                ⚠️ {setupError}
+              <div className="p-3 rounded bg-chili-soft border border-chili/30 text-chili text-[10px] font-bold">
+                {setupError}
               </div>
             )}
 
             {setupSuccess && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
-                ✓ {setupSuccess}
+              <div className="p-3 rounded bg-sage-soft border border-sage/30 text-sage text-[10px] font-bold">
+                {setupSuccess}
               </div>
             )}
 
             <form onSubmit={handleSetupPasswordSubmit} className="space-y-3 text-xs">
               <div className="space-y-1">
-                <label className="font-extrabold text-slate-300">Canteen Stall ID</label>
+                <label className="font-bold text-ink-soft">Canteen Stall ID</label>
                 <input
                   type="text"
                   disabled
                   value={setupUsername}
-                  className="w-full bg-slate-950/50 border border-slate-800 rounded-xl p-2.5 text-slate-500 cursor-not-allowed"
+                  className="w-full bg-cardstock border border-ink/15 rounded p-2.5 text-ink-soft cursor-not-allowed"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-extrabold text-slate-300">New Password *</label>
+                <label className="font-bold text-ink-soft">New Password *</label>
                 <input
                   type="password"
                   required
                   value={setupPassword}
                   onChange={(e) => setSetupPassword(e.target.value)}
                   placeholder="At least 6 characters"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-extrabold text-slate-300">Confirm Password *</label>
+                <label className="font-bold text-ink-soft">Confirm Password *</label>
                 <input
                   type="password"
                   required
                   value={setupConfirmPassword}
                   onChange={(e) => setSetupConfirmPassword(e.target.value)}
                   placeholder="Re-enter password"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full btn-primary-gradient py-3 text-xs font-bold text-white rounded-xl shadow-lg mt-2 flex items-center justify-center gap-1.5"
+                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 flex items-center justify-center gap-1.5 transition-colors"
               >
                 <span>Save Password & Complete Setup</span>
                 <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* FIRST-TIME STUDENT LOGIN: OTP-gated password reset */}
+      {showStudentFirstLoginModal && (
+        <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4">
+          <div className="card-surface w-full max-w-md p-6 space-y-4 relative">
+            <div className="flex items-center justify-between border-b border-dashed border-ink/15 pb-3">
+              <h3 className="text-sm font-bold text-ink flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-marigold" /> Set Your Password
+              </h3>
+              <button
+                onClick={() => setShowStudentFirstLoginModal(false)}
+                className="text-ink-soft hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-[11px] text-ink-soft leading-relaxed">
+              This is your first login. We've sent a verification code to <strong className="text-ink">{firstLoginEmail}</strong> — enter it below along with your new permanent password.
+            </p>
+
+            {firstLoginError && (
+              <div className="p-3 rounded bg-chili-soft border border-chili/30 text-chili text-[10px] font-bold">
+                {firstLoginError}
+              </div>
+            )}
+
+            {firstLoginSuccess && (
+              <div className="p-3 rounded bg-sage-soft border border-sage/30 text-sage text-[10px] font-bold">
+                {firstLoginSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleStudentFirstLoginSubmit} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="font-bold text-ink-soft">Enter 4-Digit Email OTP</label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  required
+                  value={firstLoginOtp}
+                  onChange={(e) => setFirstLoginOtp(e.target.value)}
+                  placeholder="4-digit OTP"
+                  className="w-full bg-paper border border-ink/15 rounded p-3 text-center text-lg font-mono font-bold tracking-widest text-ink focus:outline-none focus:border-marigold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-ink-soft">New Password *</label>
+                <input
+                  type="password"
+                  required
+                  value={firstLoginPassword}
+                  onChange={(e) => setFirstLoginPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-ink-soft">Confirm Password *</label>
+                <input
+                  type="password"
+                  required
+                  value={firstLoginConfirmPassword}
+                  onChange={(e) => setFirstLoginConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password"
+                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <span>Verify & Save Password</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResendFirstLoginOtp}
+                disabled={isResendingFirstLoginOtp}
+                className="w-full text-[11px] font-bold text-ink-soft hover:text-marigold transition-colors text-center"
+              >
+                {isResendingFirstLoginOtp ? "Resending..." : "Didn't get a code? Resend it"}
               </button>
             </form>
           </div>

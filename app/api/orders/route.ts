@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { brandEmailShell, emailBadge, emailRow, sendBrandedEmail } from "@/lib/email";
 
 export async function GET(req: Request) {
   try {
@@ -12,7 +13,8 @@ export async function GET(req: Request) {
 
     if (tokenNumber) {
       const portion = await prisma.orderItem.findUnique({
-        where: { tokenNumber }
+        where: { tokenNumber },
+        include: { order: true }
       });
       if (!portion) {
         return NextResponse.json({ success: false, error: "Token not found" }, { status: 404 });
@@ -27,6 +29,8 @@ export async function GET(req: Request) {
           items: JSON.parse(portion.itemsJson),
           subtotal: portion.subtotal,
           customerNotes: portion.customerNotes || "No notes",
+          studentName: portion.order?.studentName || null,
+          studentRegNumber: portion.order?.studentRegNumber || null,
           status: portion.status
         }
       });
@@ -129,6 +133,8 @@ export async function GET(req: Request) {
         paymentStatus: order.paymentStatus,
         totalAmount: order.totalAmount,
         customerNotes: order.customerNotes || "",
+        studentName: order.studentName || null,
+        studentRegNumber: order.studentRegNumber || null,
         vendorPortions: mappedPortions
       };
 
@@ -166,6 +172,8 @@ export async function GET(req: Request) {
           paymentStatus: order.paymentStatus,
           totalAmount: order.totalAmount,
           customerNotes: order.customerNotes || "",
+          studentName: order.studentName || null,
+          studentRegNumber: order.studentRegNumber || null,
           createdAt: order.createdAt,
           vendorPortions: mappedPortions
         };
@@ -184,7 +192,8 @@ export async function GET(req: Request) {
 
     const items = await prisma.orderItem.findMany({
       where: { stallId: restaurantId },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      include: { order: true }
     });
 
     // Map DB items to front-end records
@@ -198,6 +207,8 @@ export async function GET(req: Request) {
       items: JSON.parse(o.itemsJson),
       subtotal: o.subtotal,
       status: o.status,
+      studentName: o.order?.studentName || null,
+      studentRegNumber: o.order?.studentRegNumber || null,
       placedAt: new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       timestamp: new Date(o.createdAt).getTime()
     }));
@@ -221,7 +232,9 @@ export async function POST(req: Request) {
       totalAmount,
       customerNotes,
       vendorPortions,
-      email
+      email,
+      studentName,
+      studentRegNumber
     } = body;
 
     if (!orderId || !vendorPortions || !Array.isArray(vendorPortions)) {
@@ -248,6 +261,8 @@ export async function POST(req: Request) {
         totalAmount,
         customerNotes,
         email: studentEmail,
+        studentName: studentName?.trim() || null,
+        studentRegNumber: studentRegNumber?.trim() || null,
         paymentStatus: "PAID",
         paymentMethod: "Razorpay"
       }
@@ -289,6 +304,10 @@ export async function POST(req: Request) {
       }
     }
 
+    if (studentEmail && studentEmail !== "student@kristujayanti.com") {
+      await sendOrderPlacedEmail(studentEmail, masterToken, totalAmount, vendorPortions);
+    }
+
     return NextResponse.json({ success: true, message: "Order stored in database" });
   } catch (error: any) {
     console.error("POST order error:", error);
@@ -299,172 +318,89 @@ export async function POST(req: Request) {
   }
 }
 
-async function sendOrderStatusEmail(email: string, status: string, stallName: string, itemsJsonStr: string, tokenNumber: string) {
+async function sendOrderPlacedEmail(email: string, masterToken: string, totalAmount: number, vendorPortions: any[]) {
+  const portionsHtml = vendorPortions.map((p: any) => {
+    const itemsHtml = (p.items || [])
+      .map((i: any) => emailRow(`${i.quantity}x ${i.name}`, `₹${(i.price * i.quantity).toFixed(2)}`))
+      .join("");
+    return `
+      <div style="margin:16px 0; padding:14px 16px; background-color:#F5F6F2; border:1px solid rgba(25,28,30,0.15); border-radius:4px;">
+        <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700; margin-bottom:8px;">
+          <span>${p.stallName}</span>
+          <span style="font-family:'Courier New',monospace;">${p.tokenNumber}</span>
+        </div>
+        <div style="font-size:11px; color:#534437; margin-bottom:8px;">Pickup slot: ${p.pickupTimeSlot || "—"}</div>
+        ${itemsHtml}
+      </div>`;
+  }).join("");
+
+  const html = brandEmailShell({
+    eyebrow: "Order placed",
+    heading: "We've got your order!",
+    bodyHtml: `
+      <p style="margin:0 0 12px;">Payment confirmed. Your master token is:</p>
+      <div style="text-align:center; margin:16px 0;">
+        <span style="display:inline-block; font-family:'Courier New',monospace; font-size:20px; font-weight:700; background-color:#F5F6F2; border:1px solid rgba(25,28,30,0.15); padding:10px 20px; border-radius:6px;">${masterToken}</span>
+      </div>
+      ${portionsHtml}
+      ${emailRow("Total paid", `₹${Number(totalAmount).toFixed(2)}`, { strong: true })}
+      <p style="margin:16px 0 0; color:#534437; font-size:12px;">We'll email you again the moment each stall has your food ready for pickup.</p>
+    `
+  });
+
+  await sendBrandedEmail({ to: email, subject: `Order confirmed — token ${masterToken}`, html });
+}
+
+async function sendOrderStatusEmail(email: string, status: string, stallName: string, itemsJsonStr: string, tokenNumber: string, subtotal?: number) {
   try {
     const items = JSON.parse(itemsJsonStr);
-    const itemsHtml = items.map((i: any) => `<li><strong>${i.name}</strong> x ${i.quantity}</li>`).join("");
-    
+    const itemsHtml = items
+      .map((i: any) => emailRow(`${i.quantity}x ${i.name}`, `₹${(i.price * i.quantity).toFixed(2)}`))
+      .join("");
+
     let subject = "";
-    let bodyTitle = "";
+    let heading = "";
     let bodyDesc = "";
-    let statusColor = "";
-    
+    let badge = "";
+    let tone: "marigold" | "sage" | "chili" = "marigold";
+
     if (status === "READY") {
-      subject = `🍔 Your Order from ${stallName} is Packed & Ready!`;
-      bodyTitle = "Your food is packed and ready!";
-      bodyDesc = `Great news! Your order from <strong>${stallName}</strong> (Token: <strong>${tokenNumber}</strong>) has been packed and is ready for pickup at the counter. Please present your token number to collect your hot meal.`;
-      statusColor = "#10b981"; // emerald
+      subject = `Ready for pickup — ${stallName}`;
+      heading = "Your food is ready!";
+      bodyDesc = `Your order from <strong>${stallName}</strong> has been packed and is ready at the counter. Show your token to collect it.`;
+      badge = "READY FOR PICKUP";
+      tone = "sage";
+    } else if (status === "FULFILLED") {
+      subject = `Order collected — receipt from ${stallName}`;
+      heading = "Thanks for picking up your order";
+      bodyDesc = `Here's your receipt from <strong>${stallName}</strong>. Enjoy your meal!`;
+      badge = "COLLECTED";
+      tone = "sage";
     } else if (status === "REFUNDED") {
-      subject = `⚠️ Refund Confirmation: Order from ${stallName}`;
-      bodyTitle = "Order Refund Issued";
-      bodyDesc = `Your order from <strong>${stallName}</strong> (Token: <strong>${tokenNumber}</strong>) has been cancelled and a full refund has been credited back to your payment account. We apologize for any inconvenience.`;
-      statusColor = "#ef4444"; // red
+      subject = `Refund issued — ${stallName}`;
+      heading = "Your order was refunded";
+      bodyDesc = `Your order from <strong>${stallName}</strong> was cancelled and a full refund has been credited back to your payment account. We're sorry for the inconvenience.`;
+      badge = "REFUNDED";
+      tone = "chili";
     } else {
       return; // Do not send email for other statuses
     }
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>${bodyTitle}</title>
-        <style>
-          body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #0b1329;
-            color: #f1f5f9;
-            margin: 0;
-            padding: 40px 20px;
-          }
-          .email-card {
-            max-width: 500px;
-            margin: 0 auto;
-            background: rgba(30, 41, 59, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(10px);
-          }
-          .logo {
-            font-size: 16px;
-            font-weight: 900;
-            color: #f97316;
-            margin-bottom: 25px;
-            text-align: center;
-          }
-          h2 {
-            font-size: 20px;
-            font-weight: 800;
-            color: #ffffff;
-            margin-top: 0;
-            text-align: center;
-          }
-          p {
-            font-size: 13px;
-            line-height: 1.6;
-            color: #94a3b8;
-          }
-          .status-badge {
-            background-color: ${statusColor};
-            color: #ffffff;
-            font-size: 12px;
-            font-weight: 800;
-            padding: 6px 12px;
-            border-radius: 8px;
-            display: inline-block;
-            margin-bottom: 15px;
-            text-transform: uppercase;
-          }
-          .items-box {
-            background-color: #0f172a;
-            border: 1px solid #1e293b;
-            border-radius: 12px;
-            padding: 15px 20px;
-            margin: 20px 0;
-          }
-          .items-box ul {
-            margin: 0;
-            padding-left: 20px;
-            color: #cbd5e1;
-            font-size: 13px;
-          }
-          .items-box li {
-            margin-bottom: 8px;
-          }
-          .footer {
-            margin-top: 30px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            padding-top: 20px;
-            font-size: 10px;
-            color: #64748b;
-            text-align: center;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-card">
-          <div class="logo">Kristu Jayanti University • CampusBites</div>
-          <h2>${bodyTitle}</h2>
-          <center>
-            <div class="status-badge">${status}</div>
-          </center>
-          <p>${bodyDesc}</p>
-          
-          <div class="items-box">
-            <p style="margin-top:0; font-weight:800; color:#f97316;">Order Details:</p>
-            <ul>
-              ${itemsHtml}
-            </ul>
-          </div>
-          
-          <p style="font-size:11px; text-align:center; color:#64748b;">
-            This is an automated order update from the CampusBites Canteen Hub.
-          </p>
-          <div class="footer">
-            © 2026 Kristu Jayanti University, Canteen Hub. All rights reserved.
-          </div>
+    const html = brandEmailShell({
+      eyebrow: "Order update",
+      heading,
+      bodyHtml: `
+        <div style="margin-bottom:14px;">${emailBadge(badge, tone)}</div>
+        <p style="margin:0 0 14px;">${bodyDesc}</p>
+        ${emailRow("Token", tokenNumber, { strong: true })}
+        <div style="margin:14px 0; padding:12px 14px; background-color:#F5F6F2; border:1px solid rgba(25,28,30,0.15); border-radius:4px;">
+          ${itemsHtml}
+          ${subtotal !== undefined ? emailRow("Subtotal", `₹${subtotal.toFixed(2)}`, { strong: true }) : ""}
         </div>
-      </body>
-      </html>
-    `;
+      `
+    });
 
-    const nodemailer = require("nodemailer");
-    if (process.env.SMTP_HOST) {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
-
-      await transporter.sendMail({
-        from: `"CampusBites" <noreply@kristujayanti.com>`,
-        to: email,
-        subject,
-        html: htmlContent
-      });
-      console.log(`[SMTP EMAIL LOG] Sent status update (${status}) to ${email}`);
-    } else {
-      console.log(`[SMTP SKIPPED] No SMTP credentials. Mock status update (${status}) printed for ${email}`);
-    }
-
-    // Save to public directory for easy previewing
-    try {
-      const fs = require("fs");
-      const path = require("path");
-      const publicDir = path.join(process.cwd(), "public", "emails");
-      if (!fs.existsSync(publicDir)) {
-        fs.mkdirSync(publicDir, { recursive: true });
-      }
-      fs.writeFileSync(path.join(publicDir, "last-status.html"), htmlContent);
-    } catch (fsErr) {
-      console.error("Failed to write mock status email file:", fsErr);
-    }
+    await sendBrandedEmail({ to: email, subject, html });
   } catch (err) {
     console.error("sendOrderStatusEmail error:", err);
   }
@@ -472,132 +408,25 @@ async function sendOrderStatusEmail(email: string, status: string, stallName: st
 
 async function sendPartialHoldEmail(email: string, stallName: string, oosItemName: string, tokenNumber: string) {
   try {
-    const subject = `⚠️ ACTION REQUIRED: Item Out of Stock in your Order from ${stallName}`;
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Action Required: Item Out of Stock</title>
-        <style>
-          body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #0b1329;
-            color: #f1f5f9;
-            margin: 0;
-            padding: 40px 20px;
-          }
-          .email-card {
-            max-width: 500px;
-            margin: 0 auto;
-            background: rgba(30, 41, 59, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(10px);
-          }
-          .logo {
-            font-size: 16px;
-            font-weight: 900;
-            color: #f97316;
-            margin-bottom: 25px;
-            text-align: center;
-          }
-          h2 {
-            font-size: 20px;
-            font-weight: 800;
-            color: #ffffff;
-            margin-top: 0;
-            text-align: center;
-          }
-          p {
-            font-size: 13px;
-            line-height: 1.6;
-            color: #94a3b8;
-          }
-          .warning-badge {
-            background-color: #f59e0b;
-            color: #ffffff;
-            font-size: 12px;
-            font-weight: 800;
-            padding: 6px 12px;
-            border-radius: 8px;
-            display: inline-block;
-            margin-bottom: 15px;
-            text-transform: uppercase;
-          }
-          .action-box {
-            background-color: #0f172a;
-            border: 1px solid #1e293b;
-            border-radius: 12px;
-            padding: 15px 20px;
-            margin: 20px 0;
-            text-align: center;
-          }
-          .footer {
-            margin-top: 30px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            padding-top: 20px;
-            font-size: 10px;
-            color: #64748b;
-            text-align: center;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-card">
-          <div class="logo">Kristu Jayanti University • CampusBites</div>
-          <h2>Item Out of Stock Alert</h2>
-          <center>
-            <div class="warning-badge">Action Required</div>
-          </center>
-          <p>
-            The kitchen at <strong>${stallName}</strong> has flagged that the item "<strong>${oosItemName}</strong>" from your order (Token: <strong>${tokenNumber}</strong>) is currently **out of stock**.
-          </p>
-          <p>
-            Please open the CampusBites web app and navigate to your order confirmation page to choose whether you would like to:
-          </p>
-          
-          <div class="action-box">
-            <p style="margin: 0; font-weight:800; color:#f97316; font-size:13px; line-height:1.6;">
-              1. Continue with remaining items (Partial Refund)<br>
-              OR<br>
-              2. Cancel whole order (Full Refund)
-            </p>
-          </div>
-          
-          <p style="font-size:11px; text-align:center; color:#64748b;">
-            Your response is required to resume cooking or generate your refund.
-          </p>
-          <div class="footer">
-            © 2026 Kristu Jayanti University, Canteen Hub. All rights reserved.
-          </div>
+    const html = brandEmailShell({
+      eyebrow: "Action required",
+      heading: "One item ran out",
+      bodyHtml: `
+        <div style="margin-bottom:14px;">${emailBadge("ACTION REQUIRED", "chili")}</div>
+        <p style="margin:0 0 14px;">The kitchen at <strong>${stallName}</strong> is out of "<strong>${oosItemName}</strong>" from your order (Token: <strong>${tokenNumber}</strong>).</p>
+        <div style="margin:14px 0; padding:14px 16px; background-color:#F5F6F2; border:1px solid rgba(25,28,30,0.15); border-radius:4px; text-align:center; font-size:12px; font-weight:700;">
+          Open your order page to choose:<br />
+          Continue with the rest (partial refund) — or — Cancel the whole order (full refund)
         </div>
-      </body>
-      </html>
-    `;
+        <p style="margin:0; color:#534437; font-size:12px;">We'll hold cooking until you decide.</p>
+      `
+    });
 
-    const nodemailer = require("nodemailer");
-    if (process.env.SMTP_HOST) {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
-
-      await transporter.sendMail({
-        from: `"CampusBites" <noreply@kristujayanti.com>`,
-        to: email,
-        subject,
-        html: htmlContent
-      });
-      console.log(`[SMTP EMAIL LOG] Sent Partial Hold alert email to ${email}`);
-    }
+    await sendBrandedEmail({
+      to: email,
+      subject: `Action needed — an item is out of stock at ${stallName}`,
+      html
+    });
   } catch (err) {
     console.error("sendPartialHoldEmail error:", err);
   }
@@ -606,153 +435,43 @@ async function sendPartialHoldEmail(email: string, stallName: string, oosItemNam
 async function sendPartialResolutionEmail(email: string, resolution: "CONTINUE" | "CANCEL", stallName: string, itemsJsonStr: string, tokenNumber: string, refundAmount: number) {
   try {
     const items = JSON.parse(itemsJsonStr);
-    const itemsHtml = items.map((i: any) => `<li>${i.outOfStock ? `<del style="color:#ef4444;">${i.name}</del> <span style="color:#ef4444;">[OUT OF STOCK]</span>` : `<strong>${i.name}</strong>`} x ${i.quantity}</li>`).join("");
+    const itemsHtml = items
+      .map((i: any) => i.outOfStock
+        ? emailRow(`${i.quantity}x ${i.name} (out of stock)`, "—", { color: "#B23A2A" })
+        : emailRow(`${i.quantity}x ${i.name}`, `₹${(i.price * i.quantity).toFixed(2)}`))
+      .join("");
 
     let subject = "";
-    let bodyTitle = "";
+    let heading = "";
     let bodyDesc = "";
-    let statusColor = "";
+    let badge = "";
 
     if (resolution === "CONTINUE") {
-      subject = `✓ Resolution Confirmed: Continuing Order from ${stallName}`;
-      bodyTitle = "Order Adjusted - Continuing Prep";
-      bodyDesc = `You chose to **continue** with the available items. A partial refund of <strong>₹${refundAmount}</strong> has been processed to your account. The kitchen is preparing the remaining items for pickup.`;
-      statusColor = "#10b981"; // green
+      subject = `Order adjusted — ${stallName}`;
+      heading = "Continuing with the rest of your order";
+      bodyDesc = `You chose to continue with the available items. A partial refund of <strong>₹${refundAmount}</strong> is on its way back to your payment account. The kitchen is preparing what's left.`;
+      badge = "CONTINUING";
     } else {
-      subject = `❌ Order Cancelled: ${stallName}`;
-      bodyTitle = "Entire Order Cancelled";
-      bodyDesc = `As requested, your entire order from <strong>${stallName}</strong> (Token: <strong>${tokenNumber}</strong>) has been cancelled. A full refund of <strong>₹${refundAmount}</strong> has been credited back to your payment account.`;
-      statusColor = "#ef4444"; // red
+      subject = `Order cancelled — ${stallName}`;
+      heading = "Your order was cancelled";
+      bodyDesc = `As requested, your order from <strong>${stallName}</strong> (Token: <strong>${tokenNumber}</strong>) has been cancelled and a full refund of <strong>₹${refundAmount}</strong> has been credited back.`;
+      badge = "CANCELLED";
     }
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>${bodyTitle}</title>
-        <style>
-          body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #0b1329;
-            color: #f1f5f9;
-            margin: 0;
-            padding: 40px 20px;
-          }
-          .email-card {
-            max-width: 500px;
-            margin: 0 auto;
-            background: rgba(30, 41, 59, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(10px);
-          }
-          .logo {
-            font-size: 16px;
-            font-weight: 900;
-            color: #f97316;
-            margin-bottom: 25px;
-            text-align: center;
-          }
-          h2 {
-            font-size: 20px;
-            font-weight: 800;
-            color: #ffffff;
-            margin-top: 0;
-            text-align: center;
-          }
-          p {
-            font-size: 13px;
-            line-height: 1.6;
-            color: #94a3b8;
-          }
-          .status-badge {
-            background-color: ${statusColor};
-            color: #ffffff;
-            font-size: 12px;
-            font-weight: 800;
-            padding: 6px 12px;
-            border-radius: 8px;
-            display: inline-block;
-            margin-bottom: 15px;
-            text-transform: uppercase;
-          }
-          .items-box {
-            background-color: #0f172a;
-            border: 1px solid #1e293b;
-            border-radius: 12px;
-            padding: 15px 20px;
-            margin: 20px 0;
-          }
-          .items-box ul {
-            margin: 0;
-            padding-left: 20px;
-            color: #cbd5e1;
-            font-size: 13px;
-          }
-          .items-box li {
-            margin-bottom: 8px;
-          }
-          .footer {
-            margin-top: 30px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            padding-top: 20px;
-            font-size: 10px;
-            color: #64748b;
-            text-align: center;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-card">
-          <div class="logo">Kristu Jayanti University • CampusBites</div>
-          <h2>${bodyTitle}</h2>
-          <center>
-            <div class="status-badge">${resolution}</div>
-          </center>
-          <p>${bodyDesc}</p>
-          
-          <div class="items-box">
-            <p style="margin-top:0; font-weight:800; color:#f97316;">Order Resolution Summary:</p>
-            <ul>
-              ${itemsHtml}
-            </ul>
-          </div>
-          
-          <p style="font-size:12px; text-align:center; font-weight:bold; color:#10b981;">
-            Refund Value Generated: ₹${refundAmount}
-          </p>
-          
-          <div class="footer">
-            © 2026 Kristu Jayanti University, Canteen Hub. All rights reserved.
-          </div>
+    const html = brandEmailShell({
+      eyebrow: "Resolution confirmed",
+      heading,
+      bodyHtml: `
+        <div style="margin-bottom:14px;">${emailBadge(badge, resolution === "CONTINUE" ? "sage" : "chili")}</div>
+        <p style="margin:0 0 14px;">${bodyDesc}</p>
+        <div style="margin:14px 0; padding:12px 14px; background-color:#F5F6F2; border:1px solid rgba(25,28,30,0.15); border-radius:4px;">
+          ${itemsHtml}
         </div>
-      </body>
-      </html>
-    `;
+        ${emailRow("Refund amount", `₹${refundAmount}`, { strong: true, color: "#3F7A55" })}
+      `
+    });
 
-    const nodemailer = require("nodemailer");
-    if (process.env.SMTP_HOST) {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
-
-      await transporter.sendMail({
-        from: `"CampusBites" <noreply@kristujayanti.com>`,
-        to: email,
-        subject,
-        html: htmlContent
-      });
-      console.log(`[SMTP EMAIL LOG] Sent Partial Resolution (${resolution}) email to ${email}`);
-    }
+    await sendBrandedEmail({ to: email, subject, html });
   } catch (err) {
     console.error("sendPartialResolutionEmail error:", err);
   }
@@ -906,7 +625,8 @@ export async function PUT(req: Request) {
         status,
         updated.stallName,
         updated.itemsJson,
-        updated.tokenNumber
+        updated.tokenNumber,
+        updated.subtotal
       );
     }
 

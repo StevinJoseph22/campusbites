@@ -402,6 +402,13 @@ export default function VendorOrdersPage() {
                           <p className="text-xs text-white font-bold">{order.placedAt} • {order.pickupTimeSlot}</p>
                         </div>
 
+                        {(order.studentName || order.studentRegNumber) && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Student</span>
+                            <p className="text-xs text-white font-bold">{order.studentName || "—"} <span className="text-slate-400 font-mono font-normal">({order.studentRegNumber || "—"})</span></p>
+                          </div>
+                        )}
+
                         <div className="space-y-1.5 pt-1">
                           <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Ordered Items</span>
                           <ul className="space-y-1 bg-slate-950/80 p-3 rounded-2xl border border-slate-850">
@@ -515,6 +522,9 @@ export default function VendorOrdersPage() {
                     </div>
 
                     <p className="text-xs text-slate-300">Placed: <strong className="text-white">{order.placedAt || "Just now"}</strong> • Slot: <strong className="text-white">{order.pickupTimeSlot}</strong></p>
+                    {(order.studentName || order.studentRegNumber) && (
+                      <p className="text-xs text-slate-300">Student: <strong className="text-white">{order.studentName || "—"}</strong> <span className="font-mono">({order.studentRegNumber || "—"})</span></p>
+                    )}
 
                     <div className="space-y-1 text-xs">
                       {order.items.map((item, idx) => (
@@ -588,6 +598,9 @@ export default function VendorOrdersPage() {
                     </div>
 
                     <p className="text-xs text-slate-350">Placed: <strong className="text-white">{order.placedAt || "Just now"}</strong> • Slot: <strong className="text-slate-100">{order.pickupTimeSlot}</strong></p>
+                    {(order.studentName || order.studentRegNumber) && (
+                      <p className="text-xs text-slate-350">Student: <strong className="text-white">{order.studentName || "—"}</strong> <span className="font-mono">({order.studentRegNumber || "—"})</span></p>
+                    )}
 
                     <div className="space-y-1 text-xs">
                       {order.items.map((item, idx) => (
@@ -651,6 +664,9 @@ export default function VendorOrdersPage() {
                     </div>
 
                     <p className="text-xs text-slate-400">Placed: <strong className="text-white">{order.placedAt || "Just now"}</strong> • Slot: <strong className="text-slate-200">{order.pickupTimeSlot}</strong></p>
+                    {(order.studentName || order.studentRegNumber) && (
+                      <p className="text-xs text-slate-400">Student: <strong className="text-white">{order.studentName || "—"}</strong> <span className="font-mono">({order.studentRegNumber || "—"})</span></p>
+                    )}
 
                     {order.status === "PACKING" ? (
                       <button
@@ -703,6 +719,8 @@ export default function VendorOrdersPage() {
           items={selectedReceiptOrder.items}
           subtotal={selectedReceiptOrder.subtotal}
           customerNotes={selectedReceiptOrder.customerNotes}
+          studentName={selectedReceiptOrder.studentName}
+          studentRegNumber={selectedReceiptOrder.studentRegNumber}
           status={selectedReceiptOrder.status}
           onClose={() => setSelectedReceiptOrder(null)}
           onFulfill={() => {

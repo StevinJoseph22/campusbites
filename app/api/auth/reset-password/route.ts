@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     if (existingUser) {
       await prisma.user.update({
         where: { email },
-        data: { passwordHash }
+        data: { passwordHash, isTempPassword: false }
       });
     } else {
       await prisma.user.create({

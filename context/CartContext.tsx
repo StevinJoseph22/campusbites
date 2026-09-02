@@ -28,7 +28,14 @@ interface CartContextType {
   clearCart: () => void;
   totalCount: number;
   totalAmount: number;
+  /** Convenience fee: platformFeePercent% of the food subtotal, applies to every order. */
+  convenienceFee: number;
+  /** Flat packaging charge, applies only when orderType is TAKEAWAY. */
   totalTakeawayFee: number;
+  /** totalAmount + convenienceFee + totalTakeawayFee — the single source of truth for the payable total. */
+  grandTotal: number;
+  platformFeePercent: number;
+  packagingFee: number;
   itemsByStall: Record<string, { stallId: string; stallName: string; campus: string; items: CartItem[] }>;
 }
 
@@ -37,6 +44,13 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY">("DINE_IN");
+  // Convenience fee is a % of the order (default 5%); packaging is a flat ₹ charge for takeaway (default ₹10).
+  // Both are admin-configurable via /api/settings (SystemSetting.platformFee is the %, .takeawayFee is the flat ₹).
+  const [platformFeePercent, setPlatformFeePercent] = useState(5);
+  const [packagingFee, setPackagingFee] = useState(10);
+  // Guards the persist-effect below from firing with the initial empty state
+  // and wiping out a saved cart before the load-effect has restored it.
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     try {
@@ -46,17 +60,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (savedType === "TAKEAWAY" || savedType === "DINE_IN") setOrderType(savedType);
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsLoaded(true);
     }
+
+    fetch("/api/settings")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.settings) {
+          setPlatformFeePercent(data.settings.platformFee);
+          setPackagingFee(data.settings.takeawayFee);
+        }
+      })
+      .catch(e => console.error("Failed to load fee settings:", e));
   }, []);
 
   useEffect(() => {
+    if (!isLoaded) return;
     try {
       localStorage.setItem("campusbites_cart", JSON.stringify(cartItems));
       localStorage.setItem("campusbites_order_type", orderType);
     } catch (e) {
       console.error(e);
     }
-  }, [cartItems, orderType]);
+  }, [cartItems, orderType, isLoaded]);
 
   const addToCart = (itemData: Omit<CartItem, "quantity">) => {
     setCartItems(prev => {
@@ -92,10 +119,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const totalCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   const totalAmount = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
-  // Takeaway container charges calculate only if orderType === "TAKEAWAY"
-  const totalTakeawayFee = orderType === "TAKEAWAY" 
-    ? cartItems.reduce((acc, item) => acc + ((item.takeawayCharge ?? 10) * item.quantity), 0)
-    : 0;
+  // Convenience fee applies to every order, dine-in or takeaway: a % of the food subtotal.
+  const convenienceFee = Math.round(totalAmount * (platformFeePercent / 100) * 100) / 100;
+
+  // Packaging is a single flat charge for the whole order, only when taking away.
+  const totalTakeawayFee = orderType === "TAKEAWAY" ? packagingFee : 0;
+
+  const grandTotal = totalAmount + convenienceFee + totalTakeawayFee;
 
   const itemsByStall = cartItems.reduce((acc, item) => {
     if (!acc[item.stallId]) {
@@ -121,7 +151,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       clearCart,
       totalCount,
       totalAmount,
+      convenienceFee,
       totalTakeawayFee,
+      grandTotal,
+      platformFeePercent,
+      packagingFee,
       itemsByStall
     }}>
       {children}

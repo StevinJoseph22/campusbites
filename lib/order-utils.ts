@@ -11,6 +11,8 @@ export interface VendorOrderRecord {
   tokenNumber: string;
   stallName: string;
   customerNotes?: string;
+  studentName?: string | null;
+  studentRegNumber?: string | null;
   pickupTimeSlot: string;
   items: VendorOrderItem[];
   subtotal: number;

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
+import Razorpay from "razorpay";
 
 export async function POST(req: Request) {
   try {
@@ -12,23 +12,28 @@ export async function POST(req: Request) {
       );
     }
 
-    const orderId = `rzp_order_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+      console.error("Razorpay keys are not configured");
+      return NextResponse.json(
+        { success: false, error: "Payments are not configured" },
+        { status: 500 }
+      );
+    }
+
+    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(amount * 100),
+      currency,
+      receipt: receipt || `rcpt_${Date.now()}`,
+    });
 
     return NextResponse.json({
       success: true,
-      order: {
-        id: orderId,
-        entity: "order",
-        amount: Math.round(amount * 100),
-        amount_paid: 0,
-        amount_due: Math.round(amount * 100),
-        currency,
-        receipt: receipt || `rcpt_${Date.now()}`,
-        status: "created",
-        attempts: 0,
-        created_at: Math.floor(Date.now() / 1000)
-      },
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_campusbites"
+      order,
+      key: keyId
     });
   } catch (error: any) {
     console.error("Razorpay create order error:", error);

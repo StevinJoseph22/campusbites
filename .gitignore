@@ -37,6 +37,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+socket-server.log
+
+# real student PII — never commit
+prisma/student-import.json
 
 # env files
 .env

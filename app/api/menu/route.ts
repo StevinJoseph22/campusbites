@@ -50,7 +50,8 @@ export async function POST(req: Request) {
       available,
       availableFrom,
       offerType,
-      offerValue
+      offerValue,
+      variants
     } = body;
 
     if (!restaurantId || !name || price === undefined) {
@@ -76,7 +77,8 @@ export async function POST(req: Request) {
         available: available !== undefined ? Boolean(available) : true,
         availableFrom: availableFrom || "10:00 AM",
         offerType: offerType || "NONE",
-        offerValue: Number(offerValue) || 0
+        offerValue: Number(offerValue) || 0,
+        variants: variants && Array.isArray(variants) && variants.length > 0 ? JSON.stringify(variants) : null
       }
     });
 
@@ -110,7 +112,8 @@ export async function PUT(req: Request) {
       isBestseller,
       availableFrom,
       offerType,
-      offerValue
+      offerValue,
+      variants
     } = body;
 
     if (!id) {
@@ -137,7 +140,8 @@ export async function PUT(req: Request) {
         ...(availableFrom !== undefined && { availableFrom }),
         ...(isBestseller !== undefined && { isBestseller: Boolean(isBestseller) }),
         ...(offerType && { offerType }),
-        ...(offerValue !== undefined && { offerValue: Number(offerValue) })
+        ...(offerValue !== undefined && { offerValue: Number(offerValue) }),
+        ...(variants !== undefined && { variants: Array.isArray(variants) && variants.length > 0 ? JSON.stringify(variants) : null })
       }
     });
 

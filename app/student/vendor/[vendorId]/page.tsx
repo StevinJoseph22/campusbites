@@ -9,19 +9,16 @@ import { PageLoader } from "@/components/PageLoader";
 import { useCart } from "@/context/CartContext";
 import { getStoredRestaurants, RestaurantAccount } from "@/lib/restaurants-data";
 import { getSocket } from "@/lib/socket-client";
-import { MenuItem } from "@/app/vendor/menu/page";
-import { 
-  Store, 
-  Star, 
-  Clock, 
-  ArrowLeft, 
-  Plus, 
-  Minus, 
-  Search, 
-  Check, 
+import { MenuItem, MenuItemVariant } from "@/app/vendor/menu/page";
+import {
+  Store,
+  ArrowLeft,
+  Plus,
+  Minus,
+  Search,
+  Check,
   Flame,
   Leaf,
-  Building2,
   AlertTriangle,
   Tag
 } from "lucide-react";
@@ -43,6 +40,7 @@ export default function StudentVendorPage() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [filterVeg, setFilterVeg] = useState<"ALL" | "VEG" | "NON_VEG">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedVariantItemId, setExpandedVariantItemId] = useState<string | null>(null);
 
   const fetchMenuFromDatabase = async (restaurantId: string) => {
     try {
@@ -114,10 +112,20 @@ export default function StudentVendorPage() {
     return found ? found.quantity : 0;
   };
 
+  const parseVariants = (item: MenuItem): MenuItemVariant[] => {
+    if (!item.variants) return [];
+    try {
+      const parsed = JSON.parse(item.variants);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-campus-mesh text-slate-100 flex flex-col pb-24 sm:pb-12">
-      <Navbar 
-        cartCount={totalCount} 
+    <div className="min-h-screen bg-paper text-ink flex flex-col pb-24 sm:pb-12">
+      <Navbar
+        cartCount={totalCount}
         selectedCampus={selectedCampus}
         onCampusChange={(newCampus) => {
           localStorage.setItem("campusbites_student_campus", newCampus);
@@ -126,107 +134,95 @@ export default function StudentVendorPage() {
       />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 lg:px-8 py-6 space-y-6">
-        <button 
+        <button
           onClick={() => {
             setIsLoadingDashboard(true);
             router.push("/student/dashboard");
           }}
-          className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-ink transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to All Canteen Stalls
         </button>
 
         {/* Vendor Header */}
-        <div className="glass-panel p-6 rounded-3xl border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="card-surface p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <img src={stall.logo} alt={stall.name} className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-orange-500/30 shrink-0" />
-            
+            <img src={stall.logo} alt={stall.name} className="w-20 h-20 sm:w-24 sm:h-24 rounded object-cover border border-ink/15 shrink-0" />
+
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-mono font-bold">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded bg-marigold/10 border border-marigold/30 text-marigold text-xs font-mono font-bold">
                   {stall.tokenPrefix}
                 </span>
                 {stall.type === "PURE_VEG" ? (
-                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-xs font-extrabold flex items-center gap-1">
-                    <Leaf className="w-3 h-3 text-emerald-400" /> PURE VEG
+                  <span className="px-2.5 py-0.5 rounded bg-sage-soft border border-sage/40 text-sage text-xs font-bold flex items-center gap-1">
+                    <Leaf className="w-3 h-3" /> PURE VEG
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-extrabold border border-slate-700">
+                  <span className="px-2.5 py-0.5 rounded bg-cardstock text-ink-soft text-xs font-bold border border-ink/15">
                     MIXED
                   </span>
                 )}
-                <span className="px-2.5 py-0.5 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-extrabold flex items-center gap-1">
-                  <Building2 className="w-3 h-3 text-purple-400" /> {stall.floor}
-                </span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-white">{stall.name}</h1>
-              <p className="text-xs text-slate-400">📍 {stall.location}</p>
+              <h1 className="font-display text-xl sm:text-2xl font-semibold text-ink">{stall.name}</h1>
+              <p className="text-xs text-ink-soft">{stall.location}</p>
             </div>
-          </div>
-
-          <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
-            <span className="flex items-center gap-1 text-xs font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/20">
-              <Star className="w-4 h-4 fill-amber-400" /> {stall.rating}
-            </span>
-            <span className="text-[11px] text-slate-400 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-slate-500" /> Avg Prep: 10 mins
-            </span>
           </div>
         </div>
 
         {stall.isOpen === false && (
-          <div className="p-4 rounded-3xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-300">
-            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+          <div className="p-4 rounded bg-chili-soft border border-chili/30 text-chili text-xs font-bold flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 shrink-0" />
             <div>
-              <p className="font-extrabold text-sm text-white">Stall Currently Closed</p>
-              <p className="text-slate-400 font-medium mt-0.5">This canteen is currently closed. You can view the menu, but ordering & cart additions are locked.</p>
+              <p className="font-bold text-sm text-ink">Stall Currently Closed</p>
+              <p className="text-ink-soft font-medium mt-0.5">This canteen is currently closed. You can view the menu, but ordering & cart additions are locked.</p>
             </div>
           </div>
         )}
 
         {/* Search & Filter Chips */}
-        <div className="glass-panel p-4 rounded-2xl border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="card-surface p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search dishes in menu..."
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+              className="w-full bg-paper border border-ink/15 rounded pl-9 pr-3 py-1.5 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold"
             />
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto text-xs font-bold">
             <button
               onClick={() => setFilterVeg("ALL")}
-              className={`px-3 py-1.5 rounded-xl transition-all ${
-                filterVeg === "ALL" 
-                  ? "bg-orange-500 text-white shadow-md" 
-                  : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 rounded transition-all ${
+                filterVeg === "ALL"
+                  ? "bg-marigold text-white"
+                  : "bg-paper border border-ink/15 text-ink-soft hover:text-ink"
               }`}
             >
               All Items
             </button>
             <button
               onClick={() => setFilterVeg("VEG")}
-              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 ${
-                filterVeg === "VEG" 
-                  ? "bg-emerald-600 text-white shadow-md" 
-                  : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 rounded transition-all flex items-center gap-1 ${
+                filterVeg === "VEG"
+                  ? "bg-sage text-white"
+                  : "bg-paper border border-ink/15 text-ink-soft hover:text-ink"
               }`}
             >
-              <Leaf className="w-3.5 h-3.5 text-emerald-400" /> Pure Veg
+              <Leaf className="w-3.5 h-3.5" /> Pure Veg
             </button>
             <button
               onClick={() => setFilterVeg("NON_VEG")}
-              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 ${
-                filterVeg === "NON_VEG" 
-                  ? "bg-red-600 text-white shadow-md" 
-                  : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 rounded transition-all flex items-center gap-1 ${
+                filterVeg === "NON_VEG"
+                  ? "bg-chili text-white"
+                  : "bg-paper border border-ink/15 text-ink-soft hover:text-ink"
               }`}
             >
-              <Flame className="w-3.5 h-3.5 text-red-400" /> Non-Veg
+              <Flame className="w-3.5 h-3.5" /> Non-Veg
             </button>
           </div>
         </div>
@@ -239,6 +235,10 @@ export default function StudentVendorPage() {
             const isLowStock = item.stockType === "COUNTED" && remainingStock > 0 && remainingStock <= 5;
             const isOutOfStock = !item.available || (item.stockType === "COUNTED" && remainingStock <= 0);
 
+            const variants = parseVariants(item);
+            const hasVariants = variants.length > 0;
+            const lowestVariantPrice = hasVariants ? Math.min(...variants.map(v => v.price)) : item.price;
+
             const hasOffer = item.offerType && item.offerType !== "NONE" && item.offerValue && item.offerValue > 0;
             const finalPrice = hasOffer
               ? item.offerType === "PERCENTAGE"
@@ -247,87 +247,93 @@ export default function StudentVendorPage() {
               : item.price;
 
             return (
-              <div 
-                key={item.id} 
-                className="glass-panel rounded-3xl p-5 border-slate-800 flex flex-col sm:flex-row gap-4 justify-between hover:border-slate-700 transition-all shadow-xl"
+              <div key={item.id} className="flex flex-col">
+              <div
+                className="card-surface p-5 flex flex-col sm:flex-row gap-4 justify-between hover:bg-cardstock-hover transition-colors"
               >
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center ${
-                      item.isVeg ? "border-emerald-500" : "border-red-500"
+                    <span className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
+                      item.isVeg ? "border-sage" : "border-chili"
                     }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${item.isVeg ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${item.isVeg ? "bg-sage" : "bg-chili"}`} />
                     </span>
-                    <h3 className="text-base font-bold text-white">{item.name}</h3>
+                    <h3 className="font-display text-base font-semibold text-ink">{item.name}</h3>
 
-                    {/* SWIGGY STYLE OFFER BADGE */}
+                    {/* OFFER BADGE */}
                     {hasOffer && (
-                      <span className="px-2.5 py-0.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 border border-purple-500/50 text-white text-[10px] font-black tracking-wide uppercase shadow-lg shadow-purple-950/40 animate-pulse flex items-center gap-1">
-                        <Tag className="w-3 h-3 text-white" />
+                      <span className="px-2.5 py-0.5 rounded bg-marigold border border-marigold text-white text-[10px] font-bold tracking-wide uppercase flex items-center gap-1">
+                        <Tag className="w-3 h-3" />
                         {item.offerType === "PERCENTAGE" ? `${item.offerValue}% OFF` : `₹${item.offerValue} OFF`}
                       </span>
                     )}
 
                     {/* LOW STOCK WARNING BADGE */}
                     {isLowStock && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 text-[10px] font-extrabold flex items-center gap-1 animate-bounce">
-                        <AlertTriangle className="w-3 h-3 text-amber-400" />
-                        <span>🔥 Only {remainingStock} Left!</span>
+                      <span className="px-2.5 py-0.5 rounded bg-chili-soft border border-chili/40 text-chili text-[10px] font-bold flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        <span>Only {remainingStock} Left!</span>
                       </span>
                     )}
 
                     {item.stockType === "UNLIMITED" && (
-                      <span className="px-2 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/40 text-purple-300 text-[10px] font-bold">
-                        ⚡ Live Fresh Prep
+                      <span className="px-2 py-0.5 rounded bg-sage-soft border border-sage/40 text-sage text-[10px] font-bold">
+                        Live Fresh Prep
                       </span>
                     )}
 
                     {item.availableFrom && item.availableFrom !== "10:00 AM" && (
-                      <span className="px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/40 text-sky-300 text-[10px] font-bold flex items-center gap-1">
-                        <span>⏰ Lunch: after {item.availableFrom} only</span>
+                      <span className="px-2 py-0.5 rounded bg-cardstock border border-ink/15 text-ink-soft text-[10px] font-bold flex items-center gap-1">
+                        <span>Lunch: after {item.availableFrom} only</span>
                       </span>
                     )}
 
                     {isOutOfStock && (
-                      <span className="px-2 py-0.5 rounded-md bg-red-500/20 border border-red-500/40 text-red-400 text-[10px] font-bold">
+                      <span className="px-2 py-0.5 rounded bg-chili-soft border border-chili/40 text-chili text-[10px] font-bold">
                         Out of Stock
                       </span>
                     )}
                   </div>
 
-                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{item.description}</p>
-                  
+                  <p className="text-xs text-ink-soft line-clamp-2 leading-relaxed">{item.description}</p>
+
                   <div className="pt-1 flex items-center gap-3 font-mono">
-                    {hasOffer ? (
+                    {hasVariants ? (
+                      <span className="text-sm font-bold text-marigold">From ₹{lowestVariantPrice.toFixed(2)}</span>
+                    ) : hasOffer ? (
                       <>
-                        <span className="text-[11px] text-slate-500 line-through">₹{item.price.toFixed(2)}</span>
-                        <span className="text-sm font-extrabold text-orange-400">₹{finalPrice.toFixed(2)}</span>
+                        <span className="text-[11px] text-ink-soft line-through">₹{item.price.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-marigold">₹{finalPrice.toFixed(2)}</span>
                       </>
                     ) : (
-                      <span className="text-sm font-extrabold text-orange-400">₹{item.price.toFixed(2)}</span>
+                      <span className="text-sm font-bold text-marigold">₹{item.price.toFixed(2)}</span>
                     )}
-                    <span className="text-[10px] text-slate-400 flex items-center gap-1 font-sans">
-                      <Clock className="w-3 h-3 text-slate-500" /> {item.prepTime} mins
-                    </span>
                   </div>
                 </div>
 
                 <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 shrink-0">
-                  <img src={item.image} alt={item.name} className="w-24 h-24 rounded-2xl object-cover border border-slate-800" />
+                  <img src={item.image} alt={item.name} className="w-24 h-24 rounded object-cover border border-ink/15" />
 
                   {stall.isOpen === false ? (
                     <button
                       disabled
-                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 bg-slate-900 border border-slate-800 cursor-not-allowed"
+                      className="px-4 py-2 rounded text-xs font-bold text-ink-soft bg-cardstock border border-ink/15 cursor-not-allowed"
                     >
                       Stall Closed
                     </button>
                   ) : isOutOfStock ? (
                     <button
                       disabled
-                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 bg-slate-900 border border-slate-800 cursor-not-allowed"
+                      className="px-4 py-2 rounded text-xs font-bold text-ink-soft bg-cardstock border border-ink/15 cursor-not-allowed"
                     >
                       Sold Out
+                    </button>
+                  ) : hasVariants ? (
+                    <button
+                      onClick={() => setExpandedVariantItemId(expandedVariantItemId === item.id ? null : item.id)}
+                      className="px-5 py-2 rounded text-xs font-bold text-white bg-marigold hover:bg-marigold-hover transition-all flex items-center gap-1"
+                    >
+                      {expandedVariantItemId === item.id ? "Hide Styles" : "Select Style"}
                     </button>
                   ) : qty === 0 ? (
                     <button
@@ -345,20 +351,20 @@ export default function StudentVendorPage() {
                         takeawayCharge: item.takeawayCharge || 10,
                         campus: stall.campus
                       })}
-                      className="px-5 py-2 rounded-xl text-xs font-extrabold text-orange-400 bg-orange-500/10 hover:bg-orange-500 hover:text-white border border-orange-500/30 transition-all shadow-md flex items-center gap-1"
+                      className="px-5 py-2 rounded text-xs font-bold text-marigold bg-marigold/10 hover:bg-marigold hover:text-white border border-marigold/30 transition-all flex items-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" /> ADD
                     </button>
                   ) : (
-                    <div className="flex items-center gap-2 bg-orange-500 text-white rounded-xl p-1 font-bold text-xs shadow-lg shadow-orange-500/20">
-                      <button 
+                    <div className="flex items-center gap-2 bg-marigold text-white rounded p-1 font-bold text-xs">
+                      <button
                         onClick={() => removeFromCart(item.id)}
-                        className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 flex items-center justify-center transition-colors"
+                        className="w-7 h-7 rounded bg-marigold-hover flex items-center justify-center transition-colors"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
                       <span className="px-2 font-mono">{qty}</span>
-                      <button 
+                      <button
                         onClick={() => addToCart({
                           id: item.id,
                           name: item.name,
@@ -373,13 +379,79 @@ export default function StudentVendorPage() {
                           takeawayCharge: item.takeawayCharge || 10,
                           campus: stall.campus
                         })}
-                        className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 flex items-center justify-center transition-colors"
+                        className="w-7 h-7 rounded bg-marigold-hover flex items-center justify-center transition-colors"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   )}
                 </div>
+              </div>
+
+              {hasVariants && expandedVariantItemId === item.id && (
+                <div className="card-surface border-t-0 rounded-t-none -mt-px p-4 space-y-2">
+                  {variants.map((variant) => {
+                    const variantId = `${item.id}::${variant.label}`;
+                    const variantQty = getItemQuantity(variantId);
+                    return (
+                      <div key={variant.label} className="flex items-center justify-between gap-3 py-1.5 border-b border-dashed border-ink/15 last:border-b-0">
+                        <div className="flex items-baseline gap-3">
+                          <span className="text-xs font-bold text-ink">{variant.label}</span>
+                          <span className="text-xs font-mono text-ink-soft">₹{variant.price.toFixed(2)}</span>
+                        </div>
+                        {variantQty === 0 ? (
+                          <button
+                            onClick={() => addToCart({
+                              id: variantId,
+                              name: `${item.name} (${variant.label})`,
+                              price: variant.price,
+                              stallId: stall.id,
+                              stallName: stall.name,
+                              stallInitials: stall.tokenPrefix.replace("KJU-", ""),
+                              isVeg: item.isVeg,
+                              category: item.category,
+                              prepTime: `${item.prepTime} mins`,
+                              takeawayCharge: item.takeawayCharge || 10,
+                              campus: stall.campus
+                            })}
+                            className="px-3 py-1 rounded text-[11px] font-bold text-marigold bg-marigold/10 hover:bg-marigold hover:text-white border border-marigold/30 transition-all flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> ADD
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2 bg-marigold text-white rounded p-0.5 font-bold text-[11px]">
+                            <button
+                              onClick={() => removeFromCart(variantId)}
+                              className="w-6 h-6 rounded bg-marigold-hover flex items-center justify-center transition-colors"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="px-1.5 font-mono">{variantQty}</span>
+                            <button
+                              onClick={() => addToCart({
+                                id: variantId,
+                                name: `${item.name} (${variant.label})`,
+                                price: variant.price,
+                                stallId: stall.id,
+                                stallName: stall.name,
+                                stallInitials: stall.tokenPrefix.replace("KJU-", ""),
+                                isVeg: item.isVeg,
+                                category: item.category,
+                                prepTime: `${item.prepTime} mins`,
+                                takeawayCharge: item.takeawayCharge || 10,
+                                campus: stall.campus
+                              })}
+                              className="w-6 h-6 rounded bg-marigold-hover flex items-center justify-center transition-colors"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               </div>
             );
           })}

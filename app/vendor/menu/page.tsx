@@ -23,6 +23,12 @@ export interface MenuItem {
   availableFrom?: string;
   offerType?: string;
   offerValue?: number;
+  variants?: string | null; // JSON string of {label, price}[] — e.g. momo styles (Steamed/Fried/Tandoori)
+}
+
+export interface MenuItemVariant {
+  label: string;
+  price: number;
 }
 
 export interface VendorOffer {
