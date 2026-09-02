@@ -103,45 +103,45 @@ export default function StudentCartPage() {
             <Sparkles className="w-3.5 h-3.5 text-marigold" /> Choose Meal Service Type:
           </h2>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               onClick={() => setOrderType("DINE_IN")}
-              className={`p-4 rounded border text-left flex items-center justify-between transition-all ${
+              className={`relative p-4 rounded border text-left flex items-center gap-3 transition-all ${
                 orderType === "DINE_IN"
                   ? "bg-marigold/10 border-marigold text-ink"
                   : "bg-paper border-ink/15 text-ink-soft hover:text-ink"
               }`}
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded bg-marigold/10 text-marigold flex items-center justify-center">
-                  <Utensils className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-ink">Dine-In (Canteen Table)</p>
-                  <p className="text-[10px] text-ink-soft">Served on tray • ₹0 Packaging Fee</p>
-                </div>
+              {orderType === "DINE_IN" && (
+                <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-marigold text-white flex items-center justify-center text-[10px] font-bold shrink-0">✓</span>
+              )}
+              <div className="w-10 h-10 rounded bg-marigold/10 text-marigold flex items-center justify-center shrink-0">
+                <Utensils className="w-5 h-5" />
               </div>
-              {orderType === "DINE_IN" && <span className="text-xs font-bold text-marigold">✓ Selected</span>}
+              <div className="min-w-0 pr-5">
+                <p className="text-xs font-bold text-ink">Dine-In (Canteen Table)</p>
+                <p className="text-[10px] text-ink-soft">Served on tray • ₹0 Packaging Fee</p>
+              </div>
             </button>
 
             <button
               onClick={() => setOrderType("TAKEAWAY")}
-              className={`p-4 rounded border text-left flex items-center justify-between transition-all ${
+              className={`relative p-4 rounded border text-left flex items-center gap-3 transition-all ${
                 orderType === "TAKEAWAY"
                   ? "bg-marigold/10 border-marigold text-ink"
                   : "bg-paper border-ink/15 text-ink-soft hover:text-ink"
               }`}
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded bg-cardstock text-ink-soft flex items-center justify-center">
-                  <Package className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-ink">Takeaway / Parcel</p>
-                  <p className="text-[10px] text-ink-soft">Packed containers • +₹{totalTakeawayFee} Packaging Fee</p>
-                </div>
+              {orderType === "TAKEAWAY" && (
+                <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-marigold text-white flex items-center justify-center text-[10px] font-bold shrink-0">✓</span>
+              )}
+              <div className="w-10 h-10 rounded bg-cardstock text-ink-soft flex items-center justify-center shrink-0">
+                <Package className="w-5 h-5" />
               </div>
-              {orderType === "TAKEAWAY" && <span className="text-xs font-bold text-marigold">✓ Selected</span>}
+              <div className="min-w-0 pr-5">
+                <p className="text-xs font-bold text-ink">Takeaway / Parcel</p>
+                <p className="text-[10px] text-ink-soft">Packed containers • +₹{totalTakeawayFee} Packaging Fee</p>
+              </div>
             </button>
           </div>
         </div>
