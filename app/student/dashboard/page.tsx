@@ -10,6 +10,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { useCart } from "@/context/CartContext";
 import { getStoredRestaurants, RestaurantAccount } from "@/lib/restaurants-data";
 import { PageLoader } from "@/components/PageLoader";
+import { Footer } from "@/components/Footer";
 import { getSocket } from "@/lib/socket-client";
 import { VendorOffer } from "@/app/vendor/menu/page";
 import { 
@@ -601,6 +602,8 @@ export default function StudentDashboardPage() {
           </div>
         )}
       </main>
+
+      <Footer />
 
       <BottomNav cartCount={totalCount} cartTotal={totalAmount} />
 
