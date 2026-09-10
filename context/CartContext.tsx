@@ -28,13 +28,16 @@ interface CartContextType {
   clearCart: () => void;
   totalCount: number;
   totalAmount: number;
-  /** Convenience fee: platformFeePercent% of the food subtotal, applies to every order. */
+  /** Platform fee: platformFeePercent% of the food subtotal, applies to every order. */
+  platformFee: number;
+  /** Convenience fee: convenienceFeePercent% of the food subtotal, applies to every order. */
   convenienceFee: number;
   /** Flat packaging charge, applies only when orderType is TAKEAWAY. */
   totalTakeawayFee: number;
-  /** totalAmount + convenienceFee + totalTakeawayFee — the single source of truth for the payable total. */
+  /** totalAmount + platformFee + convenienceFee + totalTakeawayFee — the single source of truth for the payable total. */
   grandTotal: number;
   platformFeePercent: number;
+  convenienceFeePercent: number;
   packagingFee: number;
   itemsByStall: Record<string, { stallId: string; stallName: string; campus: string; items: CartItem[] }>;
 }
@@ -44,9 +47,10 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY">("DINE_IN");
-  // Convenience fee is a % of the order (default 5%); packaging is a flat ₹ charge for takeaway (default ₹10).
-  // Both are admin-configurable via /api/settings (SystemSetting.platformFee is the %, .takeawayFee is the flat ₹).
-  const [platformFeePercent, setPlatformFeePercent] = useState(5);
+  // Platform fee and convenience fee are each a % of the food subtotal (default 2% + 2% = 4% total);
+  // packaging is a flat ₹ charge for takeaway only (default ₹10). All admin-configurable via /api/settings.
+  const [platformFeePercent, setPlatformFeePercent] = useState(2);
+  const [convenienceFeePercent, setConvenienceFeePercent] = useState(2);
   const [packagingFee, setPackagingFee] = useState(10);
   // Guards the persist-effect below from firing with the initial empty state
   // and wiping out a saved cart before the load-effect has restored it.
@@ -69,6 +73,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       .then(data => {
         if (data.success && data.settings) {
           setPlatformFeePercent(data.settings.platformFee);
+          setConvenienceFeePercent(data.settings.convenienceFee);
           setPackagingFee(data.settings.takeawayFee);
         }
       })
@@ -119,13 +124,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const totalCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   const totalAmount = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
-  // Convenience fee applies to every order, dine-in or takeaway: a % of the food subtotal.
-  const convenienceFee = Math.round(totalAmount * (platformFeePercent / 100) * 100) / 100;
+  // Platform fee and convenience fee each apply to every order, dine-in or takeaway: a % of the food subtotal.
+  const platformFee = Math.round(totalAmount * (platformFeePercent / 100) * 100) / 100;
+  const convenienceFee = Math.round(totalAmount * (convenienceFeePercent / 100) * 100) / 100;
 
   // Packaging is a single flat charge for the whole order, only when taking away.
   const totalTakeawayFee = orderType === "TAKEAWAY" ? packagingFee : 0;
 
-  const grandTotal = totalAmount + convenienceFee + totalTakeawayFee;
+  const grandTotal = totalAmount + platformFee + convenienceFee + totalTakeawayFee;
 
   const itemsByStall = cartItems.reduce((acc, item) => {
     if (!acc[item.stallId]) {
@@ -151,10 +157,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       clearCart,
       totalCount,
       totalAmount,
+      platformFee,
       convenienceFee,
       totalTakeawayFee,
       grandTotal,
       platformFeePercent,
+      convenienceFeePercent,
       packagingFee,
       itemsByStall
     }}>

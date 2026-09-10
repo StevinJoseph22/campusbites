@@ -89,7 +89,11 @@ model Order {
   placedTimestamp BigInt?
   paymentMethod   String   @default("UPI")
   paymentStatus   String   @default("PAID")
+  cashfreeOrderId String?  // Cashfree's own order_id for this payment, needed to issue a refund later
   totalAmount     Float
+  platformFeeAmount    Float @default(0) // ₹ actually charged at order time (platformFee % of food subtotal)
+  convenienceFeeAmount Float @default(0) // ₹ actually charged at order time (convenienceFee % of food subtotal)
+  packagingFeeAmount   Float @default(0) // ₹ flat takeaway packaging charge, 0 for dine-in
   customerNotes   String?
   createdAt       DateTime @default(now())
 
@@ -114,7 +118,8 @@ model OrderItem {
 }
 
 model SystemSetting {
-  id          String @id @default("default")
-  platformFee Float  @default(5.0)
-  takeawayFee Float  @default(10.0)
+  id             String @id @default("default")
+  platformFee    Float  @default(2.0) // % of food subtotal
+  convenienceFee Float  @default(2.0) // % of food subtotal
+  takeawayFee    Float  @default(10.0) // flat ₹, takeaway orders only
 }

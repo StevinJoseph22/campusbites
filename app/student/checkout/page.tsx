@@ -87,15 +87,24 @@ function parseTimeToMinutes(timeStr: string): number {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { cartItems, totalAmount, orderType, clearCart } = useCart();
+  const {
+    cartItems,
+    totalAmount,
+    platformFee,
+    convenienceFee,
+    totalTakeawayFee,
+    grandTotal,
+    platformFeePercent,
+    convenienceFeePercent,
+    orderType,
+    clearCart
+  } = useCart();
   const [customerNotes, setCustomerNotes] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(timeSlots[9]); // Defaults to around 12:15 PM slot
   const [paymentMethod, setPaymentMethod] = useState<"CASHFREE">("CASHFREE");
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [settingsPlatformFee, setSettingsPlatformFee] = useState(5.0);
-  const [settingsTakeawayFee, setSettingsTakeawayFee] = useState(10.0);
   const [slotCounts, setSlotCounts] = useState<Record<string, number>>({});
   const [nowMinutes, setNowMinutes] = useState<number | null>(null);
 
@@ -130,15 +139,8 @@ export default function CheckoutPage() {
   }, [router]);
 
   React.useEffect(() => {
-    const loadFeesAndSlots = async () => {
+    const loadSlots = async () => {
       try {
-        const res = await fetch("/api/settings");
-        const data = await res.json();
-        if (data.success && data.settings) {
-          setSettingsPlatformFee(data.settings.platformFee);
-          setSettingsTakeawayFee(data.settings.takeawayFee);
-        }
-
         const slotRes = await fetch("/api/orders?checkSlots=true");
         const slotData = await slotRes.json();
         if (slotData.success && slotData.slotCounts) {
@@ -148,7 +150,7 @@ export default function CheckoutPage() {
         console.error(e);
       }
     };
-    loadFeesAndSlots();
+    loadSlots();
   }, []);
 
   // Group items by vendor stall
@@ -164,15 +166,10 @@ export default function CheckoutPage() {
     return acc;
   }, {} as Record<string, { stallName: string; stallInitials: string; items: typeof cartItems }>);
 
-  const calculateStallTotal = (items: typeof cartItems) => {
-    const foodTotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    const packagingTotal = orderType === "TAKEAWAY"
-      ? items.reduce((sum, i) => sum + settingsTakeawayFee * i.quantity, 0)
-      : 0;
-    return foodTotal + packagingTotal;
-  };
-
-  const calculatedTotal = Object.values(itemsByStall).reduce((sum, group) => sum + calculateStallTotal(group.items), 0) + settingsPlatformFee;
+  // Pure food subtotal per vendor stall — fees (platform/convenience/packaging) are
+  // order-level charges, not vendor revenue, and are tracked separately via useCart().
+  const calculateStallFoodTotal = (items: typeof cartItems) =>
+    items.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
   const handleCashfreePayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -253,7 +250,7 @@ export default function CheckoutPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: calculatedTotal,
+          amount: grandTotal,
           customerId: regNumForOrder || "guest",
           customerEmail: emailForOrder
         })
@@ -340,7 +337,7 @@ export default function CheckoutPage() {
           pickupTimeSlot: selectedSlot,
           customerNotes,
           items: stallGroup.items.map(i => ({ name: i.name, price: i.price, quantity: i.quantity })),
-          subtotal: calculateStallTotal(stallGroup.items),
+          subtotal: calculateStallFoodTotal(stallGroup.items),
           status: "PLACED" as const
         };
       });
@@ -352,7 +349,7 @@ export default function CheckoutPage() {
         placedTimestamp: Date.now(),
         paymentMethod: `Cashfree (Order ID: ${cashfreeOrderId})`,
         paymentStatus: "PAID",
-        totalAmount: calculatedTotal,
+        totalAmount: grandTotal,
         customerNotes,
         vendorPortions
       };
@@ -364,7 +361,11 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           orderId,
           masterToken: newOrder.masterToken,
-          totalAmount: calculatedTotal,
+          totalAmount: grandTotal,
+          platformFeeAmount: platformFee,
+          convenienceFeeAmount: convenienceFee,
+          packagingFeeAmount: totalTakeawayFee,
+          cashfreeOrderId,
           customerNotes,
           vendorPortions,
           email: userPhone,
@@ -524,9 +525,30 @@ export default function CheckoutPage() {
 
           {/* Order Summary & Payment Button */}
           <div className="card-surface p-6 space-y-4">
-            <div className="flex justify-between items-center text-sm font-bold text-ink border-b border-dashed border-ink/15 pb-3">
+            <div className="space-y-2 text-xs text-ink border-b border-dashed border-ink/15 pb-3">
+              <div className="flex justify-between">
+                <span className="text-ink-soft">Food Subtotal</span>
+                <span className="font-semibold font-mono text-ink">₹{totalAmount}</span>
+              </div>
+              {orderType === "TAKEAWAY" && (
+                <div className="flex justify-between">
+                  <span className="text-ink-soft">Takeaway Packaging Fee</span>
+                  <span className="font-semibold font-mono text-ink">₹{totalTakeawayFee}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-ink-soft">Platform Fee ({platformFeePercent}%)</span>
+                <span className="font-semibold font-mono text-ink">₹{platformFee}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-ink-soft">Convenience Fee ({convenienceFeePercent}%)</span>
+                <span className="font-semibold font-mono text-ink">₹{convenienceFee}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center text-sm font-bold text-ink pb-1">
               <span>Total Payable Amount</span>
-              <span className="text-xl font-mono font-bold text-marigold">₹{calculatedTotal}</span>
+              <span className="text-xl font-mono font-bold text-marigold">₹{grandTotal}</span>
             </div>
 
             <button
@@ -535,7 +557,7 @@ export default function CheckoutPage() {
               className="w-full bg-marigold hover:bg-marigold-hover disabled:opacity-60 py-4 text-sm font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
             >
               <CreditCard className="w-5 h-5" />
-              <span>{isProcessing ? "Connecting to Cashfree..." : visibleTimeSlots.length === 0 ? "No pickup slots available" : `Proceed to Pay ₹${calculatedTotal} via Cashfree →`}</span>
+              <span>{isProcessing ? "Connecting to Cashfree..." : visibleTimeSlots.length === 0 ? "No pickup slots available" : `Proceed to Pay ₹${grandTotal} via Cashfree →`}</span>
             </button>
           </div>
         </form>

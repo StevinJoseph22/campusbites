@@ -1,9 +1,33 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { brandEmailShell, emailBadge, emailRow, sendBrandedEmail } from "@/lib/email";
+import { issueCashfreeRefund } from "@/lib/cashfree";
+import { autoRefundStaleOrders } from "@/lib/auto-refund";
+
+// Actually returns money via Cashfree when we have the order's gateway id; older
+// orders placed before we started storing it can only be refunded manually via the
+// Cashfree dashboard — this is logged loudly rather than silently skipped.
+async function refundOrderPortion(cashfreeOrderId: string | null | undefined, tokenNumber: string, amount: number, note: string) {
+  if (amount <= 0) return { success: true };
+  if (!cashfreeOrderId) {
+    console.error(`MANUAL REFUND NEEDED: token ${tokenNumber} for ₹${amount} has no cashfreeOrderId on file (placed before refund tracking was added). Refund via the Cashfree dashboard directly.`);
+    return { success: false, error: "No Cashfree order id on file — refund manually" };
+  }
+  // Deterministic id (not time-based) so retrying this exact refund is idempotent on Cashfree's side.
+  const result = await issueCashfreeRefund(cashfreeOrderId, `refund-${tokenNumber}`, amount, note);
+  if (!result.success) {
+    console.error(`Cashfree refund FAILED for token ${tokenNumber} (₹${amount}):`, result.error);
+  }
+  return result;
+}
 
 export async function GET(req: Request) {
   try {
+    // Opportunistically catch any order a vendor never confirmed in time — this
+    // piggybacks on the frequent polling every open vendor/student page already does,
+    // since there's no standing cron job on this deployment.
+    await autoRefundStaleOrders();
+
     const { searchParams } = new URL(req.url);
     const restaurantId = searchParams.get("restaurantId");
     const orderId = searchParams.get("orderId");
@@ -171,6 +195,9 @@ export async function GET(req: Request) {
           paymentMethod: order.paymentMethod,
           paymentStatus: order.paymentStatus,
           totalAmount: order.totalAmount,
+          platformFeeAmount: order.platformFeeAmount,
+          convenienceFeeAmount: order.convenienceFeeAmount,
+          packagingFeeAmount: order.packagingFeeAmount,
           customerNotes: order.customerNotes || "",
           studentName: order.studentName || null,
           studentRegNumber: order.studentRegNumber || null,
@@ -230,6 +257,10 @@ export async function POST(req: Request) {
       orderId,
       masterToken,
       totalAmount,
+      platformFeeAmount,
+      convenienceFeeAmount,
+      packagingFeeAmount,
+      cashfreeOrderId,
       customerNotes,
       vendorPortions,
       email,
@@ -259,6 +290,10 @@ export async function POST(req: Request) {
         orderId,
         masterToken,
         totalAmount,
+        platformFeeAmount: Number(platformFeeAmount) || 0,
+        convenienceFeeAmount: Number(convenienceFeeAmount) || 0,
+        packagingFeeAmount: Number(packagingFeeAmount) || 0,
+        cashfreeOrderId: cashfreeOrderId || null,
         customerNotes,
         email: studentEmail,
         studentName: studentName?.trim() || null,
@@ -305,7 +340,11 @@ export async function POST(req: Request) {
     }
 
     if (studentEmail && studentEmail !== "student@kristujayanti.com") {
-      await sendOrderPlacedEmail(studentEmail, masterToken, totalAmount, vendorPortions);
+      await sendOrderPlacedEmail(studentEmail, masterToken, totalAmount, vendorPortions, {
+        platformFeeAmount: Number(platformFeeAmount) || 0,
+        convenienceFeeAmount: Number(convenienceFeeAmount) || 0,
+        packagingFeeAmount: Number(packagingFeeAmount) || 0
+      });
     }
 
     return NextResponse.json({ success: true, message: "Order stored in database" });
@@ -318,7 +357,13 @@ export async function POST(req: Request) {
   }
 }
 
-async function sendOrderPlacedEmail(email: string, masterToken: string, totalAmount: number, vendorPortions: any[]) {
+async function sendOrderPlacedEmail(
+  email: string,
+  masterToken: string,
+  totalAmount: number,
+  vendorPortions: any[],
+  fees: { platformFeeAmount: number; convenienceFeeAmount: number; packagingFeeAmount: number }
+) {
   const portionsHtml = vendorPortions.map((p: any) => {
     const itemsHtml = (p.items || [])
       .map((i: any) => emailRow(`${i.quantity}x ${i.name}`, `₹${(i.price * i.quantity).toFixed(2)}`))
@@ -334,6 +379,17 @@ async function sendOrderPlacedEmail(email: string, masterToken: string, totalAmo
       </div>`;
   }).join("");
 
+  const foodSubtotal = vendorPortions.reduce((sum: number, p: any) => sum + (p.subtotal || 0), 0);
+
+  const feeBreakupHtml = `
+    <div style="margin:16px 0; padding:14px 16px; border:1px solid rgba(25,28,30,0.15); border-radius:4px;">
+      ${emailRow("Food Subtotal", `₹${foodSubtotal.toFixed(2)}`)}
+      ${fees.packagingFeeAmount > 0 ? emailRow("Takeaway Packaging Fee", `₹${fees.packagingFeeAmount.toFixed(2)}`) : ""}
+      ${emailRow("Platform Fee", `₹${fees.platformFeeAmount.toFixed(2)}`)}
+      ${emailRow("Convenience Fee", `₹${fees.convenienceFeeAmount.toFixed(2)}`)}
+      ${emailRow("Total paid", `₹${Number(totalAmount).toFixed(2)}`, { strong: true })}
+    </div>`;
+
   const html = brandEmailShell({
     eyebrow: "Order placed",
     heading: "We've got your order!",
@@ -343,7 +399,7 @@ async function sendOrderPlacedEmail(email: string, masterToken: string, totalAmo
         <span style="display:inline-block; font-family:'Courier New',monospace; font-size:20px; font-weight:700; background-color:#F5F6F2; border:1px solid rgba(25,28,30,0.15); padding:10px 20px; border-radius:6px;">${masterToken}</span>
       </div>
       ${portionsHtml}
-      ${emailRow("Total paid", `₹${Number(totalAmount).toFixed(2)}`, { strong: true })}
+      ${feeBreakupHtml}
       <p style="margin:16px 0 0; color:#534437; font-size:12px;">We'll email you again the moment each stall has your food ready for pickup.</p>
     `
   });
@@ -554,6 +610,13 @@ export async function PUT(req: Request) {
 
         const newSubtotal = Math.max(0, orderItem.subtotal - refundAmount);
 
+        await refundOrderPortion(
+          orderItem.order?.cashfreeOrderId,
+          tokenNumber,
+          refundAmount,
+          `Partial refund — item out of stock at ${orderItem.stallName}`
+        );
+
         const updated = await prisma.orderItem.update({
           where: { tokenNumber },
           data: {
@@ -578,6 +641,13 @@ export async function PUT(req: Request) {
 
         return NextResponse.json({ success: true, order: updated });
       } else if (resolution === "CANCEL") {
+        await refundOrderPortion(
+          orderItem.order?.cashfreeOrderId,
+          tokenNumber,
+          orderItem.subtotal,
+          `Full refund — order cancelled at ${orderItem.stallName}`
+        );
+
         const updated = await prisma.orderItem.update({
           where: { tokenNumber },
           data: {
@@ -608,6 +678,18 @@ export async function PUT(req: Request) {
         { success: false, error: "Status or resolution or flagOutOfStockItem is required" },
         { status: 400 }
       );
+    }
+
+    if (status === "REFUNDED") {
+      const existing = await prisma.orderItem.findUnique({ where: { tokenNumber }, include: { order: true } });
+      if (existing) {
+        await refundOrderPortion(
+          existing.order?.cashfreeOrderId,
+          tokenNumber,
+          existing.subtotal,
+          `Order rejected by ${existing.stallName}`
+        );
+      }
     }
 
     const updated = await prisma.orderItem.update({

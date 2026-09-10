@@ -47,7 +47,8 @@ export default function SuperAdminPage() {
   const [registeredStallId, setRegisteredStallId] = useState<string | null>(null);
 
   // Admin Fees Config States
-  const [platformFee, setPlatformFee] = useState<number>(5.0);
+  const [platformFee, setPlatformFee] = useState<number>(2.0);
+  const [convenienceFee, setConvenienceFee] = useState<number>(2.0);
   const [takeawayFee, setTakeawayFee] = useState<number>(10.0);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [studentCount, setStudentCount] = useState(0);
@@ -106,33 +107,23 @@ export default function SuperAdminPage() {
             }, 0);
           }, 0)
         },
-        { 
-          Metric: "Parcel/Takeaway Charges (INR)", 
-          Value: filteredOrders.reduce((sum, o) => {
-            return sum + o.vendorPortions.reduce((pSum: number, portion: any) => {
-              const itemCharges = portion.items.reduce((iSum: number, i: any) => iSum + i.price * i.quantity, 0);
-              return pSum + Math.max(0, portion.subtotal - itemCharges);
-            }, 0);
-          }, 0)
+        {
+          Metric: "Takeaway Packaging Charges (INR)",
+          Value: filteredOrders.reduce((sum, o) => sum + (o.packagingFeeAmount || 0), 0)
         },
-        { 
-          Metric: "Platform Service Fees (INR)", 
-          Value: filteredOrders.reduce((sum, o) => {
-            const portionsSubtotal = o.vendorPortions.reduce((pSum: number, p: any) => pSum + p.subtotal, 0);
-            return sum + Math.max(0, o.totalAmount - portionsSubtotal);
-          }, 0)
+        {
+          Metric: "Platform Fees (INR)",
+          Value: filteredOrders.reduce((sum, o) => sum + (o.platformFeeAmount || 0), 0)
+        },
+        {
+          Metric: "Convenience Fees (INR)",
+          Value: filteredOrders.reduce((sum, o) => sum + (o.convenienceFeeAmount || 0), 0)
         }
       ];
 
       const detailedData: any[] = [];
       filteredOrders.forEach(order => {
-        const portionsSubtotal = order.vendorPortions.reduce((pSum: number, p: any) => pSum + p.subtotal, 0);
-        const orderPlatformCharge = Math.max(0, order.totalAmount - portionsSubtotal);
-
         order.vendorPortions.forEach((portion: any) => {
-          const portionItemSubtotal = portion.items.reduce((iSum: number, i: any) => iSum + i.price * i.quantity, 0);
-          const portionParcelCharge = Math.max(0, portion.subtotal - portionItemSubtotal);
-
           portion.items.forEach((item: any) => {
             detailedData.push({
               "Master Token": order.masterToken,
@@ -146,8 +137,9 @@ export default function SuperAdminPage() {
               "Unit Price (INR)": item.price,
               "Quantity Ordered": item.quantity,
               "Dish Subtotal (INR)": item.price * item.quantity,
-              "Parcel Charge (INR)": portionParcelCharge,
-              "Platform Charge (INR)": orderPlatformCharge,
+              "Order Packaging Fee (INR)": order.packagingFeeAmount || 0,
+              "Order Platform Fee (INR)": order.platformFeeAmount || 0,
+              "Order Convenience Fee (INR)": order.convenienceFeeAmount || 0,
               "Portion Status": portion.status,
               "Payment Status": order.paymentStatus
             });
@@ -196,6 +188,7 @@ export default function SuperAdminPage() {
       const settingsData = await settingsRes.json();
       if (settingsData.success) {
         setPlatformFee(settingsData.settings.platformFee);
+        setConvenienceFee(settingsData.settings.convenienceFee);
         setTakeawayFee(settingsData.settings.takeawayFee);
       }
     } catch (e) {
@@ -282,7 +275,7 @@ export default function SuperAdminPage() {
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platformFee, takeawayFee })
+        body: JSON.stringify({ platformFee, convenienceFee, takeawayFee })
       });
       const data = await res.json();
       if (data.success) {
@@ -385,15 +378,15 @@ export default function SuperAdminPage() {
               <Settings className="w-4.5 h-4.5" />
             </div>
             <div>
-              <h2 className="text-base font-black text-white">Platform & Takeaway Charge Configurator</h2>
-              <p className="text-[10px] text-slate-500 font-mono">Control base system profit models and packaging fee rates</p>
+              <h2 className="text-base font-black text-white">Order Fee Configuration</h2>
+              <p className="text-[10px] text-slate-500 font-mono">Shown to students on every order's bill breakdown</p>
             </div>
           </div>
 
-          <form onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end text-xs">
+          <form onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end text-xs">
             <div className="space-y-1.5">
               <label className="font-extrabold text-slate-350 block">
-                Hidden Platform Fee per Order (₹)
+                Platform Fee (% of food subtotal)
               </label>
               <div className="relative">
                 <DollarSign className="w-4 h-4 text-orange-450 absolute left-3.5 top-3" />
@@ -402,18 +395,38 @@ export default function SuperAdminPage() {
                   step="0.5"
                   value={platformFee}
                   onChange={(e) => setPlatformFee(Number(e.target.value))}
-                  placeholder="5.0"
+                  placeholder="2.0"
                   className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30 transition-all font-mono font-bold"
                 />
               </div>
               <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                <Info className="w-3.5 h-3.5 text-slate-650" /> Auto-added quietly to students' total amounts.
+                <Info className="w-3.5 h-3.5 text-slate-650" /> Shown as its own line item at checkout.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="font-extrabold text-slate-350 block">
+                Convenience Fee (% of food subtotal)
+              </label>
+              <div className="relative">
+                <DollarSign className="w-4 h-4 text-orange-450 absolute left-3.5 top-3" />
+                <input
+                  type="number"
+                  step="0.5"
+                  value={convenienceFee}
+                  onChange={(e) => setConvenienceFee(Number(e.target.value))}
+                  placeholder="2.0"
+                  className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30 transition-all font-mono font-bold"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                <Info className="w-3.5 h-3.5 text-slate-650" /> Shown as its own line item at checkout.
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="font-extrabold text-slate-355 block">
-                Standard Takeaway / Parcel Charge (₹)
+                Takeaway Packaging Charge (₹, flat)
               </label>
               <div className="relative">
                 <DollarSign className="w-4 h-4 text-orange-450 absolute left-3.5 top-3" />
@@ -427,7 +440,7 @@ export default function SuperAdminPage() {
                 />
               </div>
               <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                <Info className="w-3.5 h-3.5 text-slate-655" /> Standard packaging fee applied for takeaway orders.
+                <Info className="w-3.5 h-3.5 text-slate-655" /> Only charged on takeaway orders.
               </p>
             </div>
 
@@ -487,14 +500,14 @@ export default function SuperAdminPage() {
 
           <div className="glass-panel p-5 rounded-3xl border-slate-800 space-y-2 hover:border-slate-700 transition-all bg-gradient-to-br from-slate-900/50 to-slate-950/50 shadow-md">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Base Platform Fee</span>
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Total Order Fees</span>
               <div className="w-7 h-7 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-400">
                 <DollarSign className="w-4 h-4" />
               </div>
             </div>
             <div className="space-y-0.5">
-              <p className="text-2xl font-black text-orange-400">₹{platformFee} / Order</p>
-              <p className="text-[11px] text-slate-400 font-medium">Quietly added to cart checkout</p>
+              <p className="text-2xl font-black text-orange-400">{(platformFee + convenienceFee).toFixed(1)}%</p>
+              <p className="text-[11px] text-slate-400 font-medium">{platformFee}% platform + {convenienceFee}% convenience, shown on every bill</p>
             </div>
           </div>
         </div>
@@ -583,36 +596,37 @@ export default function SuperAdminPage() {
             <div className="bg-blue-950/20 border border-blue-500/20 p-5 rounded-2xl space-y-1">
               <span className="text-[9px] font-extrabold text-blue-400 uppercase tracking-widest">Parcel/Takeaway Charges</span>
               <p className="text-2xl font-black text-blue-400">
-                ₹{filteredOrders.reduce((sum, o) => {
-                  return sum + o.vendorPortions.reduce((pSum: number, portion: any) => {
-                    const itemCharges = portion.items.reduce((iSum: number, i: any) => iSum + i.price * i.quantity, 0);
-                    return pSum + Math.max(0, portion.subtotal - itemCharges);
-                  }, 0);
-                }, 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹{filteredOrders.reduce((sum, o) => sum + (o.packagingFeeAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <p className="text-[10px] text-slate-400 font-medium">Accumulated container & package fees</p>
             </div>
 
-            {/* Platform Commission Charges */}
+            {/* Platform Fee */}
             <div className="bg-purple-950/20 border border-purple-500/20 p-5 rounded-2xl space-y-1">
-              <span className="text-[9px] font-extrabold text-purple-400 uppercase tracking-widest">Platform Service Fees</span>
+              <span className="text-[9px] font-extrabold text-purple-400 uppercase tracking-widest">Platform Fees ({platformFee}%)</span>
               <p className="text-2xl font-black text-purple-400">
-                ₹{filteredOrders.reduce((sum, o) => {
-                  const portionsSubtotal = o.vendorPortions.reduce((pSum: number, p: any) => pSum + p.subtotal, 0);
-                  return sum + Math.max(0, o.totalAmount - portionsSubtotal);
-                }, 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹{filteredOrders.reduce((sum, o) => sum + (o.platformFeeAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">System commission/platform profits</p>
+              <p className="text-[10px] text-slate-400 font-medium">System platform fee revenue</p>
+            </div>
+
+            {/* Convenience Fee */}
+            <div className="bg-pink-950/20 border border-pink-500/20 p-5 rounded-2xl space-y-1">
+              <span className="text-[9px] font-extrabold text-pink-400 uppercase tracking-widest">Convenience Fees ({convenienceFee}%)</span>
+              <p className="text-2xl font-black text-pink-400">
+                ₹{filteredOrders.reduce((sum, o) => sum + (o.convenienceFeeAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-[10px] text-slate-400 font-medium">System convenience fee revenue</p>
             </div>
           </div>
 
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-400">
             <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-              <CheckCircle2 className="w-4 h-4" /> 
+              <CheckCircle2 className="w-4 h-4" />
               Accounting Ledger Balanced & Verified (No Errors)
             </span>
             <span className="text-[11px] font-mono text-slate-500">
-              Total (₹{(filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0)).toFixed(2)}) = Items + Takeaway + Platform
+              Total (₹{(filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0)).toFixed(2)}) = Items + Takeaway + Platform + Convenience
             </span>
           </div>
         </div>

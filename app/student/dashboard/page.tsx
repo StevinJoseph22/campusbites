@@ -12,7 +12,6 @@ import { getStoredRestaurants, RestaurantAccount } from "@/lib/restaurants-data"
 import { PageLoader } from "@/components/PageLoader";
 import { Footer } from "@/components/Footer";
 import { getSocket } from "@/lib/socket-client";
-import { VendorOffer } from "@/app/vendor/menu/page";
 import { 
   Search,
   Clock,
@@ -39,7 +38,6 @@ export default function StudentDashboardPage() {
   const router = useRouter();
   const { totalCount, totalAmount, addToCart, removeFromCart, clearCart, cartItems } = useCart();
   const [restaurants, setRestaurants] = useState<RestaurantAccount[]>([]);
-  const [offers, setOffers] = useState<VendorOffer[]>([]);
   const [discountItems, setDiscountItems] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [floorFilter, setFloorFilter] = useState<string>("ALL");
@@ -96,14 +94,6 @@ export default function StudentDashboardPage() {
       setSelectedCampus(savedCampus);
     }
 
-    try {
-      const savedOffers = localStorage.getItem("campusbites_all_offers");
-      if (savedOffers) {
-        setOffers(JSON.parse(savedOffers));
-      } else {
-        setOffers([]);
-      }
-    } catch (e) {}
 
     // Subscribe to real-time menu/discount updates
     try {
@@ -387,37 +377,6 @@ export default function StudentDashboardPage() {
                       </div>
                     );
                   })}
-                </div>
-              </div>
-            )}
-
-            {/* CAMPUS OFFERS & COMBO DEALS CAROUSEL BANNER */}
-            {offers.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="font-display text-sm font-bold text-ink flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-marigold" /> Active Campus Special Offers & Combos
-                </h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {offers.map((offer) => (
-                    <div
-                      key={offer.id}
-                      className="card-surface hover:bg-cardstock-hover p-5 flex justify-between items-center gap-4 transition-colors"
-                    >
-                      <div className="space-y-1.5">
-                        <span className="px-2.5 py-0.5 rounded bg-marigold/10 border border-marigold/30 text-marigold text-[10px] font-bold tracking-wider uppercase">
-                          {offer.discountBadge}
-                        </span>
-                        <h3 className="text-sm font-bold text-ink">{offer.title}</h3>
-                        <p className="text-[11px] text-ink-soft line-clamp-2">{offer.description}</p>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className="text-lg font-mono font-bold text-marigold block">₹{offer.price}</span>
-                        <span className="text-[9px] text-ink-soft font-mono">Special combo price</span>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
             )}

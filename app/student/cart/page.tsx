@@ -40,15 +40,14 @@ export default function StudentCartPage() {
     clearCart,
     totalCount,
     totalAmount,
+    platformFee,
     convenienceFee,
     totalTakeawayFee,
     grandTotal,
     platformFeePercent,
+    convenienceFeePercent,
     itemsByStall
   } = useCart();
-
-  const platformFee = convenienceFee;
-  const takeawayFee = totalTakeawayFee;
   const stallGroupList = Object.values(itemsByStall);
 
   if (cartItems.length === 0) {
@@ -231,8 +230,13 @@ export default function StudentCartPage() {
             )}
 
             <div className="flex justify-between leader-row pb-2">
-              <span className="text-ink-soft">Platform Express Fee</span>
+              <span className="text-ink-soft">Platform Fee ({platformFeePercent}%)</span>
               <span className="font-semibold font-mono text-ink">₹{platformFee}</span>
+            </div>
+
+            <div className="flex justify-between leader-row pb-2">
+              <span className="text-ink-soft">Convenience Fee ({convenienceFeePercent}%)</span>
+              <span className="font-semibold font-mono text-ink">₹{convenienceFee}</span>
             </div>
 
             <div className="flex justify-between text-sm font-bold text-ink pt-1">

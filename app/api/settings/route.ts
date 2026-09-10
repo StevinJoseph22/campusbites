@@ -11,7 +11,8 @@ export async function GET() {
       setting = await prisma.systemSetting.create({
         data: {
           id: "default",
-          platformFee: 5.0,
+          platformFee: 2.0,
+          convenienceFee: 2.0,
           takeawayFee: 10.0
         }
       });
@@ -25,17 +26,19 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { platformFee, takeawayFee } = await req.json();
+    const { platformFee, convenienceFee, takeawayFee } = await req.json();
 
     const updated = await prisma.systemSetting.upsert({
       where: { id: "default" },
       update: {
         platformFee: Number(platformFee),
+        convenienceFee: Number(convenienceFee),
         takeawayFee: Number(takeawayFee)
       },
       create: {
         id: "default",
         platformFee: Number(platformFee),
+        convenienceFee: Number(convenienceFee),
         takeawayFee: Number(takeawayFee)
       }
     });

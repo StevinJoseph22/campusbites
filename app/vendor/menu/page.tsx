@@ -26,6 +26,11 @@ export interface MenuItem {
   variants?: string | null;
 }
 
+export interface MenuItemVariant {
+  label: string;
+  price: number;
+}
+
 import {
   Plus,
   Search,
