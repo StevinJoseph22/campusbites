@@ -142,7 +142,10 @@ export default function LoginPage() {
         localStorage.setItem("campusbites_student_campus", data.user.campus || "Airport Road Campus");
 
         if (data.user.role === "VENDOR") {
-          localStorage.setItem("campusbites_active_vendor_id", data.user.username);
+          // The restaurant's id is the vendor account's email prefix (set at registration),
+          // which stays stable even if the login username is simplified later.
+          const restaurantId = data.user.email.includes("@") ? data.user.email.split("@")[0] : data.user.username;
+          localStorage.setItem("campusbites_active_vendor_id", restaurantId);
           setTimeout(() => router.push("/vendor/dashboard"), 1200);
         } else if (data.user.role === "ADMIN") {
           setTimeout(() => router.push("/admin"), 1200);

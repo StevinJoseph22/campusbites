@@ -97,6 +97,30 @@ export default function CheckoutPage() {
   const [settingsPlatformFee, setSettingsPlatformFee] = useState(5.0);
   const [settingsTakeawayFee, setSettingsTakeawayFee] = useState(10.0);
   const [slotCounts, setSlotCounts] = useState<Record<string, number>>({});
+  const [nowMinutes, setNowMinutes] = useState<number | null>(null);
+
+  React.useEffect(() => {
+    const updateNow = () => {
+      const now = new Date();
+      setNowMinutes(now.getHours() * 60 + now.getMinutes());
+    };
+    updateNow();
+    const interval = setInterval(updateNow, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Hide slots that have already started, and require at least a 15-minute lead time
+  const visibleTimeSlots = nowMinutes === null
+    ? timeSlots
+    : timeSlots.filter((slot) => parseTimeToMinutes(slot.split("-")[0].trim()) >= nowMinutes + 15);
+
+  React.useEffect(() => {
+    if (nowMinutes === null) return;
+    if (visibleTimeSlots.length > 0 && !visibleTimeSlots.includes(selectedSlot)) {
+      setSelectedSlot(visibleTimeSlots[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowMinutes]);
 
   React.useEffect(() => {
     const reg = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
@@ -159,6 +183,14 @@ export default function CheckoutPage() {
 
     try {
       // 0. Validate item availability and time constraints
+      const currentMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+      const selectedSlotStart = parseTimeToMinutes(selectedSlot.split("-")[0].trim());
+      if (selectedSlotStart < currentMinutes + 15) {
+        setErrorMessage("⚠️ Your selected pickup slot is no longer available. Please choose a later slot.");
+        setIsProcessing(false);
+        return;
+      }
+
       // Check if canteen stalls are currently open
       const restRes = await fetch("/api/restaurants");
       const restData = await restRes.json();
@@ -410,8 +442,14 @@ export default function CheckoutPage() {
               <Clock className="w-4 h-4 text-marigold" /> Select 15-Minute Pickup Time Slot:
             </h3>
 
+            {visibleTimeSlots.length === 0 && (
+              <p className="text-xs text-chili font-bold py-4 text-center">
+                No more pickup slots available today. Please come back tomorrow.
+              </p>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-bold">
-              {timeSlots.map((slot) => {
+              {visibleTimeSlots.map((slot) => {
                 const count = slotCounts[slot] || 0;
                 let statusText = "Fast Pick (Rush Less)";
                 let statusColorClass = "text-sage border-sage/30 bg-sage-soft";
@@ -493,11 +531,11 @@ export default function CheckoutPage() {
 
             <button
               type="submit"
-              disabled={isProcessing}
+              disabled={isProcessing || visibleTimeSlots.length === 0}
               className="w-full bg-marigold hover:bg-marigold-hover disabled:opacity-60 py-4 text-sm font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
             >
               <CreditCard className="w-5 h-5" />
-              <span>{isProcessing ? "Connecting to Cashfree..." : `Proceed to Pay ₹${calculatedTotal} via Cashfree →`}</span>
+              <span>{isProcessing ? "Connecting to Cashfree..." : visibleTimeSlots.length === 0 ? "No pickup slots available" : `Proceed to Pay ₹${calculatedTotal} via Cashfree →`}</span>
             </button>
           </div>
         </form>
