@@ -13,6 +13,7 @@ import {
   LogOut
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { initNotificationPermission, sendBrowserNotification } from "@/lib/notifications";
 
 interface NavbarProps {
   cartCount?: number;
@@ -49,7 +50,52 @@ export function Navbar({
       }
       setStudentReg(reg);
     }
+    initNotificationPermission();
   }, [router]);
+
+  // Poll active orders in the background and fire a browser notification whenever
+  // a vendor updates a token's status (covers the whole site, not just the order page).
+  useEffect(() => {
+    const email = typeof window !== "undefined" ? localStorage.getItem("campusbites_user_phone") : null;
+    if (!email) return;
+
+    const notifyStatus = (stallName: string, tokenNumber: string, status: string) => {
+      if (status === "CONFIRMED") sendBrowserNotification(`${stallName} confirmed your order`, `Token ${tokenNumber} is now being prepared.`);
+      else if (status === "READY") sendBrowserNotification(`${stallName}: order ready!`, `Token ${tokenNumber} is ready for pickup.`);
+      else if (status === "FULFILLED") sendBrowserNotification(`${stallName}: order picked up`, `Token ${tokenNumber} — thanks for ordering!`);
+      else if (status === "REFUNDED") sendBrowserNotification(`${stallName}: order refunded`, `Token ${tokenNumber} was out of stock. Refund processed.`);
+    };
+
+    const checkOrderStatuses = async () => {
+      try {
+        const res = await fetch(`/api/orders?studentEmail=${email}`);
+        const data = await res.json();
+        if (!data.success || !data.orders) return;
+
+        const storageKey = "campusbites_last_order_statuses";
+        const stored: Record<string, string> = JSON.parse(localStorage.getItem(storageKey) || "{}");
+        const updated = { ...stored };
+
+        data.orders.forEach((order: any) => {
+          order.vendorPortions?.forEach((portion: any) => {
+            const prevStatus = stored[portion.tokenNumber];
+            if (prevStatus && prevStatus !== portion.status) {
+              notifyStatus(portion.stallName, portion.tokenNumber, portion.status);
+            }
+            updated[portion.tokenNumber] = portion.status;
+          });
+        });
+
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to poll order statuses for notifications:", e);
+      }
+    };
+
+    checkOrderStatuses();
+    const interval = setInterval(checkOrderStatuses, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSignOut = () => {
     localStorage.removeItem("campusbites_user_role");
