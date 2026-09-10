@@ -47,6 +47,9 @@ interface OrderRecord {
   paymentMethod: string;
   paymentStatus: string;
   totalAmount: number;
+  platformFeeAmount?: number;
+  convenienceFeeAmount?: number;
+  packagingFeeAmount?: number;
   customerNotes?: string;
   vendorPortions: VendorPortion[];
 }
@@ -387,16 +390,21 @@ export default function StudentOrderConfirmationPage() {
 
         {/* Detailed Invoice Summary Receipt */}
         {(() => {
+          // Out-of-stock items were already refunded out of the order — they no longer
+          // count toward what was actually charged.
           const itemCharges = order.vendorPortions.reduce((sum, portion) => {
-            return sum + portion.items.reduce((iSum, i) => iSum + i.price * i.quantity, 0);
+            return sum + portion.items.filter(i => !i.outOfStock).reduce((iSum, i) => iSum + i.price * i.quantity, 0);
           }, 0);
 
-          const parcelCharges = order.vendorPortions.reduce((sum, portion) => {
-            const portionItemCharges = portion.items.reduce((iSum, i) => iSum + i.price * i.quantity, 0);
-            return sum + Math.max(0, portion.subtotal - portionItemCharges);
-          }, 0);
-
-          const platformCharges = Math.max(0, order.totalAmount - order.vendorPortions.reduce((sum, p) => sum + p.subtotal, 0));
+          const packagingCharges = order.packagingFeeAmount || 0;
+          const platformCharges = order.platformFeeAmount || 0;
+          const convenienceCharges = order.convenienceFeeAmount || 0;
+          // Legacy orders default these fields to 0, same as "no fee" — only trust the
+          // breakdown when at least one of them is actually non-zero.
+          const hasFeeBreakdown = platformCharges > 0 || convenienceCharges > 0;
+          // Orders placed before fee tracking was added don't have a stored breakdown —
+          // show the difference as a single line rather than guessing a wrong split.
+          const otherCharges = Math.max(0, order.totalAmount - itemCharges - packagingCharges - platformCharges - convenienceCharges);
 
           return (
             <div className="card-surface p-6 space-y-4">
@@ -410,17 +418,30 @@ export default function StudentOrderConfirmationPage() {
                   <span className="text-ink font-mono font-bold">₹{itemCharges.toFixed(2)}</span>
                 </div>
 
-                {parcelCharges > 0 && (
+                {packagingCharges > 0 && (
                   <div className="flex justify-between items-center leader-row pb-2 text-ink-soft">
                     <span>Takeaway Container / Parcel Charges</span>
-                    <span className="text-ink font-mono font-bold">₹{parcelCharges.toFixed(2)}</span>
+                    <span className="text-ink font-mono font-bold">₹{packagingCharges.toFixed(2)}</span>
                   </div>
                 )}
 
-                <div className="flex justify-between items-center leader-row pb-2 text-ink-soft">
-                  <span>Platform/System Service Fee</span>
-                  <span className="text-ink font-mono font-bold">₹{platformCharges.toFixed(2)}</span>
-                </div>
+                {hasFeeBreakdown ? (
+                  <>
+                    <div className="flex justify-between items-center leader-row pb-2 text-ink-soft">
+                      <span>Platform Fee</span>
+                      <span className="text-ink font-mono font-bold">₹{platformCharges.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center leader-row pb-2 text-ink-soft">
+                      <span>Convenience Fee</span>
+                      <span className="text-ink font-mono font-bold">₹{convenienceCharges.toFixed(2)}</span>
+                    </div>
+                  </>
+                ) : otherCharges > 0 ? (
+                  <div className="flex justify-between items-center leader-row pb-2 text-ink-soft">
+                    <span>Fees & Charges</span>
+                    <span className="text-ink font-mono font-bold">₹{otherCharges.toFixed(2)}</span>
+                  </div>
+                ) : null}
 
                 <div className="pt-1 flex justify-between items-center text-sm font-bold text-ink">
                   <span className="flex items-center gap-1.5">

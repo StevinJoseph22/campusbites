@@ -156,6 +156,9 @@ export async function GET(req: Request) {
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         totalAmount: order.totalAmount,
+        platformFeeAmount: order.platformFeeAmount,
+        convenienceFeeAmount: order.convenienceFeeAmount,
+        packagingFeeAmount: order.packagingFeeAmount,
         customerNotes: order.customerNotes || "",
         studentName: order.studentName || null,
         studentRegNumber: order.studentRegNumber || null,
@@ -616,6 +619,15 @@ export async function PUT(req: Request) {
           refundAmount,
           `Partial refund — item out of stock at ${orderItem.stallName}`
         );
+
+        // Keep the parent order's totalAmount accurate — otherwise the receipt still
+        // includes the price of an item that was actually refunded out of the order.
+        if (refundAmount > 0 && orderItem.orderId) {
+          await prisma.order.update({
+            where: { id: orderItem.orderId },
+            data: { totalAmount: { decrement: refundAmount } }
+          });
+        }
 
         const updated = await prisma.orderItem.update({
           where: { tokenNumber },
