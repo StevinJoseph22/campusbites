@@ -248,7 +248,7 @@ export default function StudentCartPage() {
             }}
             className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
           >
-            <span>Proceed to Checkout & Razorpay Payment</span>
+            <span>Proceed to Checkout & Cashfree Payment</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

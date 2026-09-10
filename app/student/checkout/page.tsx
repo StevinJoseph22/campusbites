@@ -24,18 +24,18 @@ import {
 
 declare global {
   interface Window {
-    Razorpay: any;
+    Cashfree: any;
   }
 }
 
-function loadRazorpayScript(): Promise<boolean> {
+function loadCashfreeScript(): Promise<boolean> {
   return new Promise((resolve) => {
-    if (typeof window !== "undefined" && window.Razorpay) {
+    if (typeof window !== "undefined" && window.Cashfree) {
       resolve(true);
       return;
     }
     const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
     script.onload = () => resolve(true);
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
@@ -90,7 +90,7 @@ export default function CheckoutPage() {
   const { cartItems, totalAmount, orderType, clearCart } = useCart();
   const [customerNotes, setCustomerNotes] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(timeSlots[9]); // Defaults to around 12:15 PM slot
-  const [paymentMethod, setPaymentMethod] = useState<"RAZORPAY">("RAZORPAY");
+  const [paymentMethod, setPaymentMethod] = useState<"CASHFREE">("CASHFREE");
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -150,7 +150,7 @@ export default function CheckoutPage() {
 
   const calculatedTotal = Object.values(itemsByStall).reduce((sum, group) => sum + calculateStallTotal(group.items), 0) + settingsPlatformFee;
 
-  const handleRazorpayPayment = async (e: React.FormEvent) => {
+  const handleCashfreePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cartItems.length === 0) return;
 
@@ -213,62 +213,54 @@ export default function CheckoutPage() {
         }
       }
 
-      // 1. Create a real order on Razorpay via our backend
-      const res = await fetch("/api/razorpay/create-order", {
+      // 1. Create a real order on Cashfree via our backend
+      const regNumForOrder = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
+      const emailForOrder = (typeof window !== "undefined" ? localStorage.getItem("campusbites_user_phone") : null) || (regNumForOrder ? `${regNumForOrder}@kristujayanti.com` : undefined);
+
+      const res = await fetch("/api/cashfree/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: calculatedTotal,
-          currency: "INR",
-          receipt: `rcpt_${Date.now()}`
+          customerId: regNumForOrder || "guest",
+          customerEmail: emailForOrder
         })
       });
 
       const data = await res.json();
 
       if (!data.success) {
-        setErrorMessage(data.error || "Failed to initialize Razorpay checkout");
+        setErrorMessage(data.error || "Failed to initialize Cashfree checkout");
         setIsProcessing(false);
         return;
       }
 
-      // 2. Load Razorpay's checkout widget and actually collect payment
-      const scriptLoaded = await loadRazorpayScript();
+      // 2. Load Cashfree's checkout widget and actually collect payment
+      const scriptLoaded = await loadCashfreeScript();
       if (!scriptLoaded) {
-        setErrorMessage("Could not load Razorpay checkout. Check your connection and try again.");
+        setErrorMessage("Could not load Cashfree checkout. Check your connection and try again.");
         setIsProcessing(false);
         return;
       }
 
-      const regNumForPrefill = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
-      const emailForPrefill = (typeof window !== "undefined" ? localStorage.getItem("campusbites_user_phone") : null) || (regNumForPrefill ? `${regNumForPrefill}@kristujayanti.com` : undefined);
-
-      const razorpay = new window.Razorpay({
-        key: data.key,
-        amount: data.order.amount,
-        currency: data.order.currency,
-        order_id: data.order.id,
-        name: "CampusBites",
-        description: "Campus canteen order",
-        prefill: emailForPrefill ? { email: emailForPrefill } : undefined,
-        theme: { color: "#C8791E" },
-        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
-          await finalizeOrder(response);
-        },
-        modal: {
-          ondismiss: () => {
-            setIsProcessing(false);
-            setErrorMessage("Payment was cancelled. No amount was charged.");
-          }
-        }
+      const cashfree = window.Cashfree({
+        mode: process.env.NEXT_PUBLIC_CASHFREE_MODE === "sandbox" ? "sandbox" : "production"
       });
 
-      razorpay.on("payment.failed", () => {
+      const result = await cashfree.checkout({
+        paymentSessionId: data.paymentSessionId,
+        redirectTarget: "_modal"
+      });
+
+      if (result.error) {
         setIsProcessing(false);
-        setErrorMessage("Payment failed. Please try again.");
-      });
+        setErrorMessage("Payment was cancelled or failed. No amount was charged.");
+        return;
+      }
 
-      razorpay.open();
+      // 3. Regardless of what the modal reported, confirm the real order
+      // status server-to-server before treating anything as paid.
+      await finalizeOrder(data.orderId);
     } catch (err: any) {
       console.error(err);
       setIsProcessing(false);
@@ -276,13 +268,13 @@ export default function CheckoutPage() {
     }
   };
 
-  const finalizeOrder = async (paymentResponse: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+  const finalizeOrder = async (cashfreeOrderId: string) => {
     try {
-      // 3. Verify the payment signature with our backend before treating the order as paid
-      const verifyRes = await fetch("/api/razorpay/verify-payment", {
+      // Verify the order's real status with our backend before treating it as paid
+      const verifyRes = await fetch("/api/cashfree/verify-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(paymentResponse)
+        body: JSON.stringify({ orderId: cashfreeOrderId })
       });
       const verifyData = await verifyRes.json();
 
@@ -326,7 +318,7 @@ export default function CheckoutPage() {
         masterToken: `KJU-MASTER-${Math.floor(1000 + Math.random() * 9000)}`,
         placedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         placedTimestamp: Date.now(),
-        paymentMethod: `Razorpay (Payment ID: ${paymentResponse.razorpay_payment_id})`,
+        paymentMethod: `Cashfree (Order ID: ${cashfreeOrderId})`,
         paymentStatus: "PAID",
         totalAmount: calculatedTotal,
         customerNotes,
@@ -398,7 +390,7 @@ export default function CheckoutPage() {
         <div className="card-surface p-6 space-y-2">
           <span className="text-[10px] text-marigold font-bold uppercase tracking-wider block">Final Step</span>
           <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">
-            Razorpay Secure Checkout & Slot Selection
+            Cashfree Secure Checkout & Slot Selection
           </h1>
           <p className="text-xs text-ink-soft">
             Selected Service Mode: <strong className="text-marigold font-bold">{orderType}</strong>
@@ -411,7 +403,7 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        <form onSubmit={handleRazorpayPayment} className="space-y-6">
+        <form onSubmit={handleCashfreePayment} className="space-y-6">
           {/* Pickup Slot Selection */}
           <div className="card-surface p-6 space-y-3">
             <h3 className="font-display text-sm font-bold text-ink flex items-center gap-2">
@@ -505,7 +497,7 @@ export default function CheckoutPage() {
               className="w-full bg-marigold hover:bg-marigold-hover disabled:opacity-60 py-4 text-sm font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
             >
               <CreditCard className="w-5 h-5" />
-              <span>{isProcessing ? "Connecting to Razorpay..." : `Proceed to Pay ₹${calculatedTotal} via Razorpay →`}</span>
+              <span>{isProcessing ? "Connecting to Cashfree..." : `Proceed to Pay ₹${calculatedTotal} via Cashfree →`}</span>
             </button>
           </div>
         </form>
@@ -514,7 +506,7 @@ export default function CheckoutPage() {
       {isProcessing && (
         <PageLoader 
           message="Processing Secure Payment" 
-          submessage="Connecting to Razorpay gateway... Please do not refresh or close this browser window." 
+          submessage="Connecting to Cashfree gateway... Please do not refresh or close this browser window."
           type="payment" 
         />
       )}

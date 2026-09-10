@@ -132,7 +132,7 @@ export default function StudentOrderConfirmationPage() {
       else if (data.status === "PACKING") smsText = `Order ${data.tokenNumber} is PACKED and being checked 📦`;
       else if (data.status === "READY") smsText = `Order ${data.tokenNumber} is READY for counter pickup! 🔔`;
         else if (data.status === "FULFILLED") smsText = `Order ${data.tokenNumber} has been DELIVERED! Thank you for dining with CampusBites! 🎉`;
-        else if (data.status === "REFUNDED") smsText = `Order ${data.tokenNumber} Out of Stock — Refund processed via Razorpay ❌`;
+        else if (data.status === "REFUNDED") smsText = `Order ${data.tokenNumber} Out of Stock — Refund processed via Cashfree ❌`;
 
         if (smsText) {
           const formattedSms = `📱 SMS to +91 ${userPhone}: "${smsText}"`;
@@ -200,7 +200,7 @@ export default function StudentOrderConfirmationPage() {
         <div className="card-surface p-6 space-y-2">
           <div className="flex items-center gap-2 text-sage text-xs font-bold uppercase tracking-wider">
             <CheckCircle2 className="w-4 h-4" />
-            <span>Order Secured & Paid via Razorpay</span>
+            <span>Order Secured & Paid via Cashfree</span>
           </div>
           <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">
             Grab Your Tokens! Your Meal is on the Way!
@@ -282,7 +282,7 @@ export default function StudentOrderConfirmationPage() {
                       <span>Order Rejected by Kitchen (Out of Stock)</span>
                     </p>
                     <p className="text-[11px] text-ink font-mono leading-relaxed">
-                      ₹{portion.subtotal} has been automatically refunded to your original Razorpay payment account!
+                      ₹{portion.subtotal} has been automatically refunded to your original Cashfree payment account!
                     </p>
                   </div>
                 )}

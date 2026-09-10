@@ -264,7 +264,7 @@ export async function POST(req: Request) {
         studentName: studentName?.trim() || null,
         studentRegNumber: studentRegNumber?.trim() || null,
         paymentStatus: "PAID",
-        paymentMethod: "Razorpay"
+        paymentMethod: "Cashfree"
       }
     });
 

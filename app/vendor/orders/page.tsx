@@ -185,7 +185,7 @@ export default function VendorOrdersPage() {
     else if (newStatus === "PACKING") smsText = `Order ${tokenNumber} is PACKED 📦`;
     else if (newStatus === "READY") smsText = `Order ${tokenNumber} is READY for counter pickup! 🔔`;
     else if (newStatus === "FULFILLED") smsText = `Order ${tokenNumber} DELIVERED! Thank you for dining with CampusBites! 🎉`;
-    else if (newStatus === "REFUNDED") smsText = `Order ${tokenNumber} Out of Stock — Refund processed via Razorpay ❌`;
+    else if (newStatus === "REFUNDED") smsText = `Order ${tokenNumber} Out of Stock — Refund processed via Cashfree ❌`;
 
     setToastMessage(`📧 Real Email Alert Sent to ${userPhone}: "${smsText}"`);
     setTimeout(() => setToastMessage(null), 4000);
