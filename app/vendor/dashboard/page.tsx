@@ -13,7 +13,6 @@ import {
   UtensilsCrossed,
   CheckCircle2,
   ChefHat,
-  Clock,
   AlertTriangle,
   Building2,
   BarChart3
@@ -213,19 +212,12 @@ export default function VendorDashboardPage() {
         </div>
 
         {/* Quick links */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <Link href="/vendor/menu" className="card-surface hover:bg-cardstock-hover transition-colors p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded bg-marigold/10 text-marigold flex items-center justify-center shrink-0">
               <UtensilsCrossed className="w-4 h-4" />
             </div>
             <span className="text-sm font-bold text-ink">Menu</span>
-          </Link>
-
-          <Link href="/vendor/slots" className="card-surface hover:bg-cardstock-hover transition-colors p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded bg-marigold/10 text-marigold flex items-center justify-center shrink-0">
-              <Clock className="w-4 h-4" />
-            </div>
-            <span className="text-sm font-bold text-ink">Pickup Slots</span>
           </Link>
 
           <Link href="/vendor/sales" className="card-surface hover:bg-cardstock-hover transition-colors p-4 flex items-center gap-3">
