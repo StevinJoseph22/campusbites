@@ -557,7 +557,7 @@ export async function PUT(req: Request) {
         const updated = await prisma.orderItem.update({
           where: { tokenNumber },
           data: {
-            status: "ACCEPTED",
+            status: "CONFIRMED",
             subtotal: newSubtotal
           },
           include: {

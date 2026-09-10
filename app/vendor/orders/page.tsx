@@ -8,20 +8,15 @@ import { DigitalReceiptModal } from "@/components/DigitalReceiptModal";
 import { getSocket } from "@/lib/socket-client";
 import { getActiveRestaurant, RestaurantAccount } from "@/lib/restaurants-data";
 import { deduplicateAndSortOrders, VendorOrderRecord } from "@/lib/order-utils";
-import { 
-  ChefHat, 
-  CheckCircle2, 
-  Bell, 
+import {
+  ChefHat,
+  CheckCircle2,
+  Bell,
   Receipt,
-  Flame,
   Archive,
   Search,
-  Building2,
-  PackageCheck,
   XCircle,
-  Smartphone,
   Check,
-  Activity,
   AlertTriangle
 } from "lucide-react";
 
@@ -41,15 +36,14 @@ export default function VendorOrdersPage() {
       const data = await res.json();
       if (data.success && data.orders) {
         setOrders(prev => {
-          // Play chime for any new active order that arrived
           const prevIds = new Set(prev.map(o => o.orderId));
           const newOrders = data.orders.filter((o: any) => !prevIds.has(o.orderId));
-          
+
           if (newOrders.length > 0) {
-            const hasNewActive = newOrders.some((o: any) => o.status === "PENDING" || o.status === "PREPARING" || o.status === "PLACED" || o.status === "ACCEPTED");
+            const hasNewActive = newOrders.some((o: any) => o.status === "PLACED");
             if (hasNewActive) {
               playChimeSound();
-              setToastMessage(`🚨 NEW RUSH ORDER! Token: ${newOrders[0].tokenNumber}`);
+              setToastMessage(`New order — Token ${newOrders[0].tokenNumber}`);
               setTimeout(() => setToastMessage(null), 6000);
             }
           }
@@ -75,7 +69,7 @@ export default function VendorOrdersPage() {
 
   useEffect(() => {
     const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
-    
+
     const loadVendorDetailsAndOrders = async () => {
       let currentVendor = getActiveRestaurant();
       try {
@@ -135,14 +129,13 @@ export default function VendorOrdersPage() {
     const socket = getSocket();
 
     const handleNewOrder = (incoming: any) => {
-      // Reload orders from DB to avoid any stale data
       fetchOrdersFromDatabase(activeVendor.id);
-      
+
       if (incoming.vendorPortions) {
         incoming.vendorPortions.forEach((portion: any) => {
           if (portion.stallId === activeVendor.id) {
             playChimeSound();
-            setToastMessage(`🚨 NEW RUSH ORDER! Token: ${portion.tokenNumber}`);
+            setToastMessage(`New order — Token ${portion.tokenNumber}`);
             setTimeout(() => setToastMessage(null), 5000);
           }
         });
@@ -155,9 +148,9 @@ export default function VendorOrdersPage() {
     };
   }, [activeVendor]);
 
-  const handleUpdateStatus = async (tokenNumber: string, newStatus: "ACCEPTED" | "COOKING" | "PACKING" | "READY" | "FULFILLED" | "REFUNDED") => {
+  const handleUpdateStatus = async (tokenNumber: string, newStatus: "CONFIRMED" | "READY" | "FULFILLED" | "REFUNDED") => {
     if (!activeVendor) return;
-    
+
     try {
       const res = await fetch("/api/orders", {
         method: "PUT",
@@ -180,20 +173,19 @@ export default function VendorOrdersPage() {
 
     const userPhone = localStorage.getItem("campusbites_user_phone") || "student@kristujayanti.com";
 
-    let smsText = "";
-    if (newStatus === "ACCEPTED" || newStatus === "COOKING") smsText = `Chef is now COOKING your order ${tokenNumber} in kitchen 🍳`;
-    else if (newStatus === "PACKING") smsText = `Order ${tokenNumber} is PACKED 📦`;
-    else if (newStatus === "READY") smsText = `Order ${tokenNumber} is READY for counter pickup! 🔔`;
-    else if (newStatus === "FULFILLED") smsText = `Order ${tokenNumber} DELIVERED! Thank you for dining with CampusBites! 🎉`;
-    else if (newStatus === "REFUNDED") smsText = `Order ${tokenNumber} Out of Stock — Refund processed via Cashfree ❌`;
+    let emailText = "";
+    if (newStatus === "CONFIRMED") emailText = `Your order ${tokenNumber} has been confirmed and is being prepared`;
+    else if (newStatus === "READY") emailText = `Your order ${tokenNumber} is ready for pickup`;
+    else if (newStatus === "FULFILLED") emailText = `Your order ${tokenNumber} has been picked up. Thanks for ordering!`;
+    else if (newStatus === "REFUNDED") emailText = `Your order ${tokenNumber} was refunded — item unavailable`;
 
-    setToastMessage(`📧 Real Email Alert Sent to ${userPhone}: "${smsText}"`);
+    setToastMessage(`Email sent to ${userPhone}: "${emailText}"`);
     setTimeout(() => setToastMessage(null), 4000);
   };
 
   const handleFlagOutOfStock = async (tokenNumber: string, itemName: string) => {
     if (!activeVendor) return;
-    if (!confirm(`Are you sure you want to flag "${itemName}" as Out of Stock for Token ${tokenNumber}? This will put the order on hold and alert the student.`)) {
+    if (!confirm(`Flag "${itemName}" as out of stock for Token ${tokenNumber}? This puts the order on hold and alerts the student.`)) {
       return;
     }
     try {
@@ -215,44 +207,76 @@ export default function VendorOrdersPage() {
 
   if (!activeVendor) return null;
 
+  const outOfStockItems = menuItems.filter(item => (!item.available || item.stockCount <= 0) && !acknowledgedItems.includes(item.id));
+
   const activeOrders = orders.filter(o => o.status !== "FULFILLED" && o.status !== "REFUNDED");
   const archivedOrders = orders.filter(o => o.status === "FULFILLED" || o.status === "REFUNDED");
 
-  const placedOrders = activeOrders.filter(o => o.status === "PLACED");
-  const cookingOrders = activeOrders.filter(o => o.status === "COOKING" || o.status === "ACCEPTED");
-  const readyOrders = activeOrders.filter(o => o.status === "PACKING" || o.status === "READY");
+  const newOrders = activeOrders.filter(o => o.status === "PLACED");
+  const preparingOrders = activeOrders.filter(o => o.status === "CONFIRMED");
+  const readyOrders = activeOrders.filter(o => o.status === "READY");
 
-  // Search filter across ALL orders (both active and delivered/refunded)
-  const searchedOrders = orders.filter(o => 
+  const searchedOrders = orders.filter(o =>
     o.tokenNumber.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
     o.items.some(i => i.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
   );
 
+  const ItemsList = ({ order }: { order: VendorOrderRecord }) => (
+    <div className="space-y-1 text-xs">
+      {order.items.map((item, idx) => (
+        <div key={idx} className={`flex justify-between items-center p-2 rounded border ${item.outOfStock ? "border-chili/30 bg-chili-soft opacity-70" : "border-ink/15 bg-paper"}`}>
+          <span className={item.outOfStock ? "line-through text-ink-soft" : "text-ink"}>
+            <strong className="text-marigold font-mono">{item.quantity}x</strong> {item.name}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-ink-soft">₹{item.price * item.quantity}</span>
+            {!item.outOfStock && order.status !== "READY" && (
+              <button
+                onClick={() => handleFlagOutOfStock(order.tokenNumber, item.name)}
+                className="text-[9px] text-chili font-bold bg-chili-soft px-1.5 py-0.5 rounded"
+                title="Flag out of stock"
+              >
+                OOS
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const OrderMeta = ({ order }: { order: VendorOrderRecord }) => (
+    <>
+      <p className="text-xs text-ink-soft">
+        Placed <strong className="text-ink">{order.placedAt || "just now"}</strong> · Slot <strong className="text-ink">{order.pickupTimeSlot}</strong>
+      </p>
+      {(order.studentName || order.studentRegNumber) && (
+        <p className="text-xs text-ink-soft">
+          {order.studentName || "—"} <span className="font-mono">({order.studentRegNumber || "—"})</span>
+        </p>
+      )}
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-campus-mesh text-slate-100 flex flex-col pb-12">
+    <div className="min-h-screen bg-paper text-ink flex flex-col pb-12">
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* OUT OF STOCK ALERTS BANNER */}
-        {menuItems.filter(item => (!item.available || item.stockCount <= 0) && !acknowledgedItems.includes(item.id)).length > 0 && (
-          <div className="glass-panel p-4 rounded-2xl border-red-500/50 bg-red-950/40 text-red-200 text-xs font-bold space-y-2.5 shadow-2xl relative animate-in slide-in-from-top duration-300">
-            <div className="flex items-center justify-between">
+        {/* Out of stock alert */}
+        {outOfStockItems.length > 0 && (
+          <div className="card-surface p-4 border-chili/30 space-y-2.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-red-400" />
-                <span className="text-sm font-black text-white">⚠️ Stock Alert: {menuItems.filter(item => (!item.available || item.stockCount <= 0) && !acknowledgedItems.includes(item.id)).length} Item(s) Out of Stock!</span>
+                <AlertTriangle className="w-4 h-4 text-chili" />
+                <span className="text-sm font-bold text-chili">{outOfStockItems.length} item(s) out of stock</span>
               </div>
-              <p className="text-[10px] text-slate-400">Students cannot purchase these until stock is replenished</p>
             </div>
-            
-            <div className="flex flex-wrap gap-2 pt-1">
-              {menuItems.filter(item => (!item.available || item.stockCount <= 0) && !acknowledgedItems.includes(item.id)).map((item) => (
-                <div key={item.id} className="flex items-center gap-2 bg-slate-950/80 border border-red-500/30 px-3 py-1.5 rounded-xl">
-                  <span className="text-white font-extrabold">{item.name}</span>
-                  <span className="text-[10px] text-slate-500">({item.stockType === "COUNTED" ? `0 left` : `Disabled`})</span>
-                  <button
-                    onClick={() => setAcknowledgedItems(prev => [...prev, item.id])}
-                    className="ml-2 text-[10px] text-red-400 hover:text-red-300 font-bold bg-red-500/10 hover:bg-red-500/20 px-2 py-0.5 rounded border border-red-500/30 transition-colors"
-                  >
+            <div className="flex flex-wrap gap-2">
+              {outOfStockItems.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 bg-chili-soft px-3 py-1.5 rounded text-xs">
+                  <span className="font-bold text-chili">{item.name}</span>
+                  <button onClick={() => setAcknowledgedItems(prev => [...prev, item.id])} className="text-chili/80 hover:text-chili font-bold underline">
                     Acknowledge
                   </button>
                 </div>
@@ -261,235 +285,106 @@ export default function VendorOrdersPage() {
           </div>
         )}
 
-        {/* Header Console */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-panel p-6 rounded-3xl border-slate-800 bg-slate-900/90 shadow-2xl">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-mono font-bold">
-                {activeVendor.tokenPrefix} Kitchen Command Console
-              </span>
-              <span className="px-2.5 py-0.5 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-bold flex items-center gap-1">
-                <Building2 className="w-3 h-3 text-purple-400" /> {activeVendor.floor}
-              </span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-white flex items-center gap-2 mt-1">
-              <Activity className="w-6 h-6 text-orange-500 animate-pulse" /> {activeVendor.name} High-Speed Live Queue
-            </h2>
-            <p className="text-xs text-slate-400">
-              Live Kanban Matrix • Automated Real-Time Email Dispatcher on Stage Transitions
-            </p>
+            <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">{activeVendor.name} — Orders</h1>
+            <p className="text-xs text-ink-soft">Live queue, updates automatically</p>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold">
+          <div className="flex items-center gap-1.5 bg-cardstock p-1 rounded border border-ink/15 text-xs font-bold w-fit">
             <button
-              onClick={() => {
-                setActiveTab("ACTIVE");
-                setSearchQuery(""); // Clear search when switching tabs
-              }}
-              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
-                activeTab === "ACTIVE" && searchQuery.trim() === ""
-                  ? "bg-orange-500 text-white shadow-md shadow-orange-500/20"
-                  : "text-slate-400 hover:text-white"
+              onClick={() => { setActiveTab("ACTIVE"); setSearchQuery(""); }}
+              className={`px-4 py-2 rounded transition-all flex items-center gap-1.5 ${
+                activeTab === "ACTIVE" && searchQuery.trim() === "" ? "bg-marigold text-white" : "text-ink-soft hover:text-ink"
               }`}
             >
-              <Flame className="w-3.5 h-3.5" />
-              <span>Active Rush Queue ({activeOrders.length})</span>
+              Active ({activeOrders.length})
             </button>
-
             <button
-              onClick={() => {
-                setActiveTab("ARCHIVED");
-                setSearchQuery(""); // Clear search when switching tabs
-              }}
-              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
-                activeTab === "ARCHIVED" && searchQuery.trim() === ""
-                  ? "bg-emerald-600 text-white shadow-md"
-                  : "text-slate-400 hover:text-white"
+              onClick={() => { setActiveTab("ARCHIVED"); setSearchQuery(""); }}
+              className={`px-4 py-2 rounded transition-all flex items-center gap-1.5 ${
+                activeTab === "ARCHIVED" && searchQuery.trim() === "" ? "bg-marigold text-white" : "text-ink-soft hover:text-ink"
               }`}
             >
-              <Archive className="w-3.5 h-3.5" />
-              <span>History ({archivedOrders.length})</span>
+              <Archive className="w-3.5 h-3.5" /> History ({archivedOrders.length})
             </button>
           </div>
         </div>
 
-        {/* Live Kitchen Search Bar */}
-        <div className="glass-panel p-4 rounded-2xl border-slate-800 bg-slate-950 flex items-center justify-between gap-3 shadow-xl">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-500 absolute left-4 top-3.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search live queue by Token Number (e.g. 745) or Ordered Dish name..."
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 font-bold"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3.5 top-3.5 text-xs text-slate-500 hover:text-white font-bold"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        {/* Search */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-ink-soft absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by token number or dish name..."
+            className="w-full bg-cardstock border border-ink/15 rounded pl-10 pr-4 py-2.5 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-b-2 focus:border-b-marigold"
+          />
         </div>
 
-        {/* Real-time Email Alert Toast */}
         {toastMessage && (
-          <div className="glass-panel p-4 rounded-2xl border-orange-500/60 bg-orange-500/20 text-white text-xs font-bold flex items-center justify-between animate-in fade-in slide-in-from-top duration-200 shadow-2xl ring-2 ring-orange-500/50">
-            <div className="flex items-center gap-2">
-              <Smartphone className="w-5 h-5 text-orange-400 animate-bounce" />
-              <span className="text-sm font-extrabold">{toastMessage}</span>
-            </div>
+          <div className="card-surface p-3.5 border-marigold/40 text-xs font-bold text-ink flex items-center gap-2">
+            <Bell className="w-4 h-4 text-marigold shrink-0" />
+            <span>{toastMessage}</span>
           </div>
         )}
 
-        {/* SEARCH RESULTS VIEW VS KANBAN rush queue view */}
         {searchQuery.trim() !== "" ? (
           <div className="space-y-4">
-            <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-extrabold flex items-center justify-between">
-              <span>🔍 Queue & History Search Results ({searchedOrders.length} matching orders)</span>
-              <button onClick={() => setSearchQuery("")} className="text-purple-400 hover:text-white font-bold text-[10px] uppercase">✕ Clear Search</button>
-            </div>
-
             {searchedOrders.length === 0 ? (
-              <div className="glass-panel p-12 text-center rounded-3xl border-slate-800 space-y-2">
-                <Search className="w-8 h-8 text-slate-500 mx-auto" />
-                <p className="text-slate-400 text-xs font-extrabold">No matching orders found in active queue or history.</p>
-                <p className="text-[10px] text-slate-500">Check token number spelling or try matching dish names.</p>
+              <div className="card-surface p-12 text-center space-y-2">
+                <Search className="w-8 h-8 text-ink-soft mx-auto" />
+                <p className="text-ink-soft text-xs font-bold">No matching orders.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {searchedOrders.map((order) => {
                   const isDelivered = order.status === "FULFILLED";
                   const isRefunded = order.status === "REFUNDED";
-
                   return (
-                    <div
-                      key={order.tokenNumber}
-                      className={`glass-panel rounded-3xl p-5 border border-slate-800 bg-slate-900/90 shadow-xl space-y-4 relative flex flex-col justify-between ${
-                        isDelivered ? "border-emerald-500/30 opacity-80 bg-slate-900/50" : isRefunded ? "border-red-500/30 opacity-60 bg-slate-900/40" : ""
-                      }`}
-                    >
-                      {/* Status overlays */}
-                      {isDelivered && (
-                        <div className="absolute top-4 right-4 px-2.5 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 text-[10px] font-extrabold">
-                          ✓ DELIVERED
-                        </div>
-                      )}
-                      {isRefunded && (
-                        <div className="absolute top-4 right-4 px-2.5 py-0.5 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-[10px] font-extrabold">
-                          ✕ REFUNDED
-                        </div>
-                      )}
+                    <div key={order.tokenNumber} className="card-surface p-5 space-y-3 relative">
+                      {isDelivered && <span className="absolute top-4 right-4 px-2 py-0.5 rounded bg-sage-soft text-sage text-[10px] font-bold">DELIVERED</span>}
+                      {isRefunded && <span className="absolute top-4 right-4 px-2 py-0.5 rounded bg-chili-soft text-chili text-[10px] font-bold">REFUNDED</span>}
 
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-2xl font-mono font-black text-orange-400 bg-orange-500/10 px-3.5 py-1 rounded-xl border border-orange-500/30">
-                            {order.tokenNumber}
-                          </span>
-                          <button
-                            onClick={() => setSelectedReceiptOrder(order)}
-                            className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-950 border border-slate-800"
-                          >
-                            <Receipt className="w-3.5 h-3.5 text-orange-400" />
-                          </button>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Time & Slot</span>
-                          <p className="text-xs text-white font-bold">{order.placedAt} • {order.pickupTimeSlot}</p>
-                        </div>
-
-                        {(order.studentName || order.studentRegNumber) && (
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Student</span>
-                            <p className="text-xs text-white font-bold">{order.studentName || "—"} <span className="text-slate-400 font-mono font-normal">({order.studentRegNumber || "—"})</span></p>
-                          </div>
-                        )}
-
-                        <div className="space-y-1.5 pt-1">
-                          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Ordered Items</span>
-                          <ul className="space-y-1 bg-slate-950/80 p-3 rounded-2xl border border-slate-850">
-                            {order.items.map((it, idx) => (
-                              <li key={idx} className={`flex justify-between items-center text-xs font-medium ${it.outOfStock ? 'text-red-400 opacity-70' : 'text-slate-300'}`}>
-                                <span className={it.outOfStock ? 'line-through text-slate-500' : ''}>
-                                  {it.name} <strong className="text-orange-400">x{it.quantity}</strong>
-                                  {it.outOfStock && <span className="ml-2 text-[9px] bg-red-500/20 text-red-400 px-1 py-0.5 rounded font-extrabold">OOS</span>}
-                                </span>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono text-[10px] text-slate-500">₹{it.price * it.quantity}</span>
-                                  {!it.outOfStock && (order.status === "PLACED" || order.status === "ACCEPTED" || order.status === "COOKING") && (
-                                    <button
-                                      onClick={() => handleFlagOutOfStock(order.tokenNumber, it.name)}
-                                      className="text-[9px] text-red-400 hover:text-red-300 font-bold bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20"
-                                      title="Flag Out of Stock"
-                                    >
-                                      ✕ OOS
-                                    </button>
-                                  )}
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        {order.customerNotes && order.customerNotes !== "No notes" && (
-                          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 font-bold leading-relaxed">
-                            💡 Note: "{order.customerNotes}"
-                          </div>
-                        )}
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-mono font-bold text-marigold">{order.tokenNumber}</span>
+                        <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15">
+                          <Receipt className="w-3.5 h-3.5" />
+                        </button>
                       </div>
 
-                      {/* Action buttons inside search view */}
+                      <OrderMeta order={order} />
+                      <ItemsList order={order} />
+
                       {!isDelivered && !isRefunded && (
-                        <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-800/80 mt-3">
-                          {order.status === "PARTIAL_HOLD" ? (
-                            <div className="w-full text-center py-2.5 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold animate-pulse col-span-2">
-                              ⏳ Awaiting Student Decision...
-                            </div>
-                          ) : (
-                            <>
-                              {(order.status === "PLACED" || order.status === "ACCEPTED") && (
-                                <button
-                                  onClick={() => handleUpdateStatus(order.tokenNumber, "COOKING")}
-                                  className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-colors col-span-2"
-                                >
-                                  <ChefHat className="w-4 h-4" />
-                                  <span>Accept & Cook Order</span>
+                        order.status === "PARTIAL_HOLD" ? (
+                          <div className="w-full text-center py-2.5 rounded bg-marigold/10 text-marigold text-xs font-bold">Awaiting student decision…</div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2 pt-2">
+                            {order.status === "PLACED" && (
+                              <>
+                                <button onClick={() => handleUpdateStatus(order.tokenNumber, "CONFIRMED")} className="bg-marigold hover:bg-marigold-hover text-white py-2 text-xs font-bold rounded flex items-center justify-center gap-1">
+                                  <Check className="w-3.5 h-3.5" /> Confirm
                                 </button>
-                              )}
-                              {order.status === "COOKING" && (
-                                <button
-                                  onClick={() => handleUpdateStatus(order.tokenNumber, "READY")}
-                                  className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-colors col-span-2"
-                                >
-                                  <PackageCheck className="w-4 h-4" />
-                                  <span>Mark Packed & Ready</span>
+                                <button onClick={() => handleUpdateStatus(order.tokenNumber, "REFUNDED")} className="bg-chili-soft text-chili py-2 text-xs font-bold rounded flex items-center justify-center gap-1">
+                                  <XCircle className="w-3.5 h-3.5" /> Reject
                                 </button>
-                              )}
-                              {order.status === "READY" && (
-                                <button
-                                  onClick={() => handleUpdateStatus(order.tokenNumber, "FULFILLED")}
-                                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-colors col-span-2 shadow-lg shadow-emerald-600/20"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  <span>Mark Delivered & Close</span>
-                                </button>
-                              )}
-                              {order.status !== "FULFILLED" && order.status !== "READY" && (
-                                <button
-                                  onClick={() => handleUpdateStatus(order.tokenNumber, "REFUNDED")}
-                                  className="bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 text-red-400 py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-all"
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                  <span>Refund</span>
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
+                              </>
+                            )}
+                            {order.status === "CONFIRMED" && (
+                              <button onClick={() => handleUpdateStatus(order.tokenNumber, "READY")} className="col-span-2 bg-marigold hover:bg-marigold-hover text-white py-2 text-xs font-bold rounded flex items-center justify-center gap-1">
+                                <Bell className="w-3.5 h-3.5" /> Mark Ready
+                              </button>
+                            )}
+                            {order.status === "READY" && (
+                              <button onClick={() => handleUpdateStatus(order.tokenNumber, "FULFILLED")} className="col-span-2 bg-sage hover:opacity-90 text-white py-2 text-xs font-bold rounded flex items-center justify-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Picked Up
+                              </button>
+                            )}
+                          </div>
+                        )
                       )}
                     </div>
                   );
@@ -499,188 +394,60 @@ export default function VendorOrdersPage() {
           </div>
         ) : activeTab === "ACTIVE" ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* COLUMN 1: NEW INCOMING ORDERS (PLACED) */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-extrabold">
-                <span className="flex items-center gap-1.5">
-                  <Flame className="w-4 h-4 text-amber-400 animate-bounce" /> 1. NEW PLACED ({placedOrders.length})
-                </span>
-                <span className="text-[10px] font-mono bg-amber-500/20 px-2 py-0.5 rounded-md">NEEDS ACCEPTANCE</span>
+            {/* NEW */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-2.5 rounded bg-marigold/10 text-marigold text-xs font-bold">
+                <span>New ({newOrders.length})</span>
               </div>
-
-              <div className="space-y-4">
-                {placedOrders.map((order) => (
-                  <div key={order.tokenNumber} className="glass-panel rounded-3xl p-5 border-2 border-amber-500 bg-slate-900/95 ring-2 ring-amber-500/50 shadow-2xl space-y-3">
+              <div className="space-y-3">
+                {newOrders.map((order) => (
+                  <div key={order.tokenNumber} className="card-surface p-4 border-marigold/40 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-2xl font-mono font-black text-orange-400 bg-orange-500/10 px-3.5 py-1 rounded-xl border border-orange-500/30">
-                        {order.tokenNumber}
-                      </span>
-                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-950 border border-slate-800">
-                        <Receipt className="w-3.5 h-3.5 text-orange-400" />
+                      <span className="text-lg font-mono font-bold text-marigold">{order.tokenNumber}</span>
+                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15">
+                        <Receipt className="w-3.5 h-3.5" />
                       </button>
                     </div>
-
-                    <p className="text-xs text-slate-300">Placed: <strong className="text-white">{order.placedAt || "Just now"}</strong> • Slot: <strong className="text-white">{order.pickupTimeSlot}</strong></p>
-                    {(order.studentName || order.studentRegNumber) && (
-                      <p className="text-xs text-slate-300">Student: <strong className="text-white">{order.studentName || "—"}</strong> <span className="font-mono">({order.studentRegNumber || "—"})</span></p>
-                    )}
-
-                    <div className="space-y-1 text-xs">
-                      {order.items.map((item, idx) => (
-                        <div key={idx} className={`flex justify-between items-center bg-slate-950 p-2 rounded-xl border ${item.outOfStock ? 'border-red-500/30 opacity-70' : 'border-slate-850'}`}>
-                          <span className={item.outOfStock ? 'line-through text-slate-500' : ''}>
-                            <strong className="text-orange-400 font-bold">{item.quantity}x</strong> {item.name}
-                            {item.outOfStock && <span className="ml-2 text-[9px] bg-red-500/20 text-red-400 px-1 py-0.5 rounded font-extrabold">OOS</span>}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400">₹{item.price * item.quantity}</span>
-                            {!item.outOfStock && (
-                              <button
-                                onClick={() => handleFlagOutOfStock(order.tokenNumber, item.name)}
-                                className="text-[9px] text-red-400 hover:text-red-300 font-bold bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20"
-                                title="Flag Out of Stock"
-                              >
-                                ✕ OOS
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-800">
-                      {order.status === "PARTIAL_HOLD" ? (
-                        <div className="w-full text-center py-2 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-bold animate-pulse col-span-2">
-                          ⏳ Awaiting Student Decision...
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleUpdateStatus(order.tokenNumber, "COOKING")}
-                            className="btn-primary-gradient py-2.5 rounded-xl font-extrabold text-white shadow-md flex items-center justify-center gap-1"
-                          >
-                            <Check className="w-4 h-4" /> Accept & Cook
-                          </button>
-                          <button
-                            onClick={() => handleUpdateStatus(order.tokenNumber, "REFUNDED")}
-                            className="bg-red-500/10 border border-red-500/30 text-red-400 py-2.5 rounded-xl font-bold flex items-center justify-center gap-1"
-                          >
-                            <XCircle className="w-4 h-4" /> Reject & Refund
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* COLUMN 2: COOKING IN KITCHEN */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-extrabold">
-                <span className="flex items-center gap-1.5">
-                  <ChefHat className="w-4 h-4 text-orange-400" /> 2. IN KITCHEN COOKING ({cookingOrders.length})
-                </span>
-                <span className="text-[10px] font-mono bg-orange-500/20 px-2 py-0.5 rounded-md">PREPARATION</span>
-              </div>
-
-              <div className="space-y-4">
-                {cookingOrders.map((order) => (
-                  <div key={order.tokenNumber} className="glass-panel rounded-3xl p-5 border border-orange-500/40 bg-slate-900/90 shadow-xl space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-2xl font-mono font-black text-orange-400 bg-orange-500/10 px-3 py-1 rounded-xl border border-orange-500/30">
-                        {order.tokenNumber}
-                      </span>
-                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-950 border border-slate-800">
-                        <Receipt className="w-3.5 h-3.5 text-orange-400" />
-                      </button>
-                    </div>
-
-                    <p className="text-xs text-slate-350">Placed: <strong className="text-white">{order.placedAt || "Just now"}</strong> • Slot: <strong className="text-slate-100">{order.pickupTimeSlot}</strong></p>
-                    {(order.studentName || order.studentRegNumber) && (
-                      <p className="text-xs text-slate-350">Student: <strong className="text-white">{order.studentName || "—"}</strong> <span className="font-mono">({order.studentRegNumber || "—"})</span></p>
-                    )}
-
-                    <div className="space-y-1 text-xs">
-                      {order.items.map((item, idx) => (
-                        <div key={idx} className={`flex justify-between items-center bg-slate-950 p-2 rounded-xl border ${item.outOfStock ? 'border-red-500/30 opacity-70' : 'border-slate-850'}`}>
-                          <span className={item.outOfStock ? 'line-through text-slate-500' : ''}>
-                            <strong className="text-orange-400 font-bold">{item.quantity}x</strong> {item.name}
-                            {item.outOfStock && <span className="ml-2 text-[9px] bg-red-500/20 text-red-400 px-1 py-0.5 rounded font-extrabold">OOS</span>}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400">₹{item.price * item.quantity}</span>
-                            {!item.outOfStock && (
-                              <button
-                                onClick={() => handleFlagOutOfStock(order.tokenNumber, item.name)}
-                                className="text-[9px] text-red-400 hover:text-red-300 font-bold bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20"
-                                title="Flag Out of Stock"
-                              >
-                                ✕ OOS
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
+                    <OrderMeta order={order} />
+                    <ItemsList order={order} />
                     {order.status === "PARTIAL_HOLD" ? (
-                      <div className="w-full text-center py-2 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-bold animate-pulse">
-                        ⏳ Awaiting Student Decision...
-                      </div>
+                      <div className="w-full text-center py-2 rounded bg-marigold/10 text-marigold text-[11px] font-bold">Awaiting student decision…</div>
                     ) : (
-                      <button
-                        onClick={() => handleUpdateStatus(order.tokenNumber, "PACKING")}
-                        className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md"
-                      >
-                        <PackageCheck className="w-4 h-4" /> Move to Packing (SMS) 📦
-                      </button>
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button onClick={() => handleUpdateStatus(order.tokenNumber, "CONFIRMED")} className="bg-marigold hover:bg-marigold-hover text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Confirm
+                        </button>
+                        <button onClick={() => handleUpdateStatus(order.tokenNumber, "REFUNDED")} className="bg-chili-soft text-chili py-2 rounded text-xs font-bold flex items-center justify-center gap-1">
+                          <XCircle className="w-3.5 h-3.5" /> Reject
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* COLUMN 3: READY FOR COUNTER */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-extrabold">
-                <span className="flex items-center gap-1.5">
-                  <Bell className="w-4 h-4 text-emerald-400" /> 3. READY FOR COUNTER ({readyOrders.length})
-                </span>
-                <span className="text-[10px] font-mono bg-emerald-500/20 px-2 py-0.5 rounded-md">COUNTER PICKUP</span>
+            {/* PREPARING */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-2.5 rounded bg-cardstock text-ink-soft text-xs font-bold">
+                <span className="flex items-center gap-1.5"><ChefHat className="w-3.5 h-3.5" /> Preparing ({preparingOrders.length})</span>
               </div>
-
-              <div className="space-y-4">
-                {readyOrders.map((order) => (
-                  <div key={order.tokenNumber} className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-slate-950/90 shadow-xl space-y-3">
+              <div className="space-y-3">
+                {preparingOrders.map((order) => (
+                  <div key={order.tokenNumber} className="card-surface p-4 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-2xl font-mono font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-xl border border-emerald-500/30">
-                        {order.tokenNumber}
-                      </span>
-                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-950 border border-slate-800">
-                        <Receipt className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-lg font-mono font-bold text-marigold">{order.tokenNumber}</span>
+                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15">
+                        <Receipt className="w-3.5 h-3.5" />
                       </button>
                     </div>
-
-                    <p className="text-xs text-slate-400">Placed: <strong className="text-white">{order.placedAt || "Just now"}</strong> • Slot: <strong className="text-slate-200">{order.pickupTimeSlot}</strong></p>
-                    {(order.studentName || order.studentRegNumber) && (
-                      <p className="text-xs text-slate-400">Student: <strong className="text-white">{order.studentName || "—"}</strong> <span className="font-mono">({order.studentRegNumber || "—"})</span></p>
-                    )}
-
-                    {order.status === "PACKING" ? (
-                      <button
-                        onClick={() => handleUpdateStatus(order.tokenNumber, "READY")}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md"
-                      >
-                        <Bell className="w-4 h-4" /> Mark Ready (Send SMS) 🔔
-                      </button>
+                    <OrderMeta order={order} />
+                    <ItemsList order={order} />
+                    {order.status === "PARTIAL_HOLD" ? (
+                      <div className="w-full text-center py-2 rounded bg-marigold/10 text-marigold text-[11px] font-bold">Awaiting student decision…</div>
                     ) : (
-                      <button
-                        onClick={() => handleUpdateStatus(order.tokenNumber, "FULFILLED")}
-                        className="w-full btn-primary-gradient py-2.5 rounded-xl text-xs font-extrabold text-white flex items-center justify-center gap-1.5 shadow-lg shadow-orange-500/25"
-                      >
-                        <Check className="w-4 h-4 stroke-[3]" /> Complete & Deliver (Send SMS)
+                      <button onClick={() => handleUpdateStatus(order.tokenNumber, "READY")} className="w-full bg-marigold hover:bg-marigold-hover text-white py-2.5 rounded text-xs font-bold flex items-center justify-center gap-1.5">
+                        <Bell className="w-4 h-4" /> Mark Ready
                       </button>
                     )}
                   </div>
@@ -688,28 +455,46 @@ export default function VendorOrdersPage() {
               </div>
             </div>
 
+            {/* READY */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-2.5 rounded bg-sage-soft text-sage text-xs font-bold">
+                <span className="flex items-center gap-1.5"><Bell className="w-3.5 h-3.5" /> Ready for Pickup ({readyOrders.length})</span>
+              </div>
+              <div className="space-y-3">
+                {readyOrders.map((order) => (
+                  <div key={order.tokenNumber} className="card-surface p-4 border-sage/40 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-mono font-bold text-sage">{order.tokenNumber}</span>
+                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-sage p-1.5 rounded bg-paper border border-ink/15">
+                        <Receipt className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <OrderMeta order={order} />
+                    <button onClick={() => handleUpdateStatus(order.tokenNumber, "FULFILLED")} className="w-full bg-sage hover:opacity-90 transition-opacity text-white py-2.5 rounded text-xs font-bold flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4" /> Picked Up / Delivered
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
-          /* ARCHIVED DELIVERED & REFUNDED ORDERS */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {archivedOrders.map((order) => (
-              <div key={order.tokenNumber} className="glass-panel p-5 rounded-3xl border border-slate-800 bg-slate-950/80 space-y-2">
+              <div key={order.tokenNumber} className="card-surface p-4 space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <span className="text-xl font-mono font-extrabold text-slate-300">{order.tokenNumber}</span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    order.status === "FULFILLED" ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"
-                  }`}>
-                    {order.status}
+                  <span className="text-sm font-mono font-bold text-ink">{order.tokenNumber}</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${order.status === "FULFILLED" ? "bg-sage-soft text-sage" : "bg-chili-soft text-chili"}`}>
+                    {order.status === "FULFILLED" ? "Delivered" : "Refunded"}
                   </span>
                 </div>
-                <div className="text-xs text-slate-400">Total: ₹{order.subtotal}</div>
+                <div className="text-xs text-ink-soft font-mono">₹{order.subtotal}</div>
               </div>
             ))}
           </div>
         )}
       </main>
 
-      {/* Digital Receipt Modal */}
       {selectedReceiptOrder && (
         <DigitalReceiptModal
           orderId={selectedReceiptOrder.orderId}

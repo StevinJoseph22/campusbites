@@ -16,7 +16,7 @@ export interface VendorOrderRecord {
   pickupTimeSlot: string;
   items: VendorOrderItem[];
   subtotal: number;
-  status: "PLACED" | "ACCEPTED" | "COOKING" | "PACKING" | "READY" | "FULFILLED" | "REFUNDED" | "PARTIAL_HOLD";
+  status: "PLACED" | "CONFIRMED" | "READY" | "FULFILLED" | "REFUNDED" | "PARTIAL_HOLD";
   placedAt?: string;
   timestamp?: number;
 }

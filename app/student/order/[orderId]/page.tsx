@@ -13,8 +13,7 @@ import {
   CheckCircle2, 
   Store, 
   ArrowLeft, 
-  ChefHat, 
-  PackageCheck,
+  ChefHat,
   Bell,
   Sparkles,
   ShoppingBag,
@@ -38,7 +37,7 @@ interface VendorPortion {
   customerNotes?: string;
   items: Array<{ name: string; price: number; quantity: number; outOfStock?: boolean }>;
   subtotal: number;
-  status: "PLACED" | "ACCEPTED" | "COOKING" | "PACKING" | "READY" | "FULFILLED" | "REFUNDED" | "PARTIAL_HOLD";
+  status: "PLACED" | "CONFIRMED" | "READY" | "FULFILLED" | "REFUNDED" | "PARTIAL_HOLD";
 }
 
 interface OrderRecord {
@@ -99,7 +98,7 @@ export default function StudentOrderConfirmationPage() {
         await fetchOrderDetails();
         // Emit socket update event to let vendor know instantly
         const socket = getSocket();
-        socket.emit("update_order_status", { tokenNumber, status: resolution === "CONTINUE" ? "ACCEPTED" : "REFUNDED" });
+        socket.emit("update_order_status", { tokenNumber, status: resolution === "CONTINUE" ? "CONFIRMED" : "REFUNDED" });
       }
     } catch (e) {
       console.error(e);
@@ -128,10 +127,9 @@ export default function StudentOrderConfirmationPage() {
 
       // GENERATE SMS STREAM LOG & TOAST
       let smsText = "";
-      if (data.status === "COOKING") smsText = `Chef is now COOKING your order ${data.tokenNumber} in kitchen 🍳`;
-      else if (data.status === "PACKING") smsText = `Order ${data.tokenNumber} is PACKED and being checked 📦`;
-      else if (data.status === "READY") smsText = `Order ${data.tokenNumber} is READY for counter pickup! 🔔`;
-        else if (data.status === "FULFILLED") smsText = `Order ${data.tokenNumber} has been DELIVERED! Thank you for dining with CampusBites! 🎉`;
+      if (data.status === "CONFIRMED") smsText = `Your order ${data.tokenNumber} has been confirmed and is being prepared`;
+      else if (data.status === "READY") smsText = `Order ${data.tokenNumber} is ready for pickup!`;
+      else if (data.status === "FULFILLED") smsText = `Order ${data.tokenNumber} picked up. Thanks for ordering!`;
         else if (data.status === "REFUNDED") smsText = `Order ${data.tokenNumber} Out of Stock — Refund processed via Cashfree ❌`;
 
         if (smsText) {
@@ -230,18 +228,14 @@ export default function StudentOrderConfirmationPage() {
         <div className="space-y-6">
           {order.vendorPortions.map((portion) => {
             const isPlaced = portion.status === "PLACED";
-            const isAccepted = portion.status === "ACCEPTED";
-            const isCooking = portion.status === "COOKING";
-            const isPacking = portion.status === "PACKING";
+            const isConfirmed = portion.status === "CONFIRMED";
             const isReady = portion.status === "READY";
             const isFulfilled = portion.status === "FULFILLED";
             const isRefunded = portion.status === "REFUNDED";
 
             let currentStageIndex = 0;
-            if (isAccepted || isCooking) currentStageIndex = 1;
-            if (isPacking) currentStageIndex = 2;
-            if (isReady) currentStageIndex = 3;
-            if (isFulfilled) currentStageIndex = 4;
+            if (isConfirmed) currentStageIndex = 1;
+            if (isReady || isFulfilled) currentStageIndex = 2;
 
             return (
               <div key={portion.tokenNumber} className="card-surface p-6 space-y-6 relative overflow-hidden">
@@ -297,7 +291,7 @@ export default function StudentOrderConfirmationPage() {
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         isFulfilled ? "bg-sage-soft text-sage" : "bg-marigold/10 text-marigold"
                       }`}>
-                        {isFulfilled ? "DELIVERED" : isReady ? "READY FOR PICKUP" : isPacking ? "PACKING" : isCooking ? "COOKING IN KITCHEN" : "ORDER PLACED"}
+                        {isFulfilled ? "DELIVERED" : isReady ? "READY FOR PICKUP" : isConfirmed ? "PREPARING" : "ORDER PLACED"}
                       </span>
                     </h4>
 
@@ -305,12 +299,12 @@ export default function StudentOrderConfirmationPage() {
                     <div className="w-full bg-paper h-2 rounded-full overflow-hidden border border-ink/15 relative">
                       <div
                         className="bg-marigold h-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, ((currentStageIndex + 1) / 4) * 100)}%` }}
+                        style={{ width: `${Math.min(100, ((currentStageIndex + 1) / 3) * 100)}%` }}
                       />
                     </div>
 
                     {/* Roadmap Stages */}
-                    <div className="grid grid-cols-4 gap-2 pt-2 text-[10px] text-center font-bold">
+                    <div className="grid grid-cols-3 gap-2 pt-2 text-[10px] text-center font-bold">
                       <div className={`p-2 rounded border flex flex-col items-center gap-1 ${
                         currentStageIndex >= 0 ? "bg-marigold/10 border-marigold/40 text-marigold" : "bg-paper border-ink/15 text-ink-soft"
                       }`}>
@@ -322,21 +316,14 @@ export default function StudentOrderConfirmationPage() {
                         currentStageIndex >= 1 ? "bg-marigold/10 border-marigold/40 text-marigold" : "bg-paper border-ink/15 text-ink-soft"
                       }`}>
                         <ChefHat className="w-4 h-4" />
-                        <span>2. Cooking</span>
+                        <span>2. Preparing</span>
                       </div>
 
                       <div className={`p-2 rounded border flex flex-col items-center gap-1 ${
-                        currentStageIndex >= 2 ? "bg-marigold/10 border-marigold/40 text-marigold" : "bg-paper border-ink/15 text-ink-soft"
-                      }`}>
-                        <PackageCheck className="w-4 h-4" />
-                        <span>3. Packing</span>
-                      </div>
-
-                      <div className={`p-2 rounded border flex flex-col items-center gap-1 ${
-                        currentStageIndex >= 3 ? "bg-sage-soft border-sage/50 text-sage" : "bg-paper border-ink/15 text-ink-soft"
+                        currentStageIndex >= 2 ? "bg-sage-soft border-sage/50 text-sage" : "bg-paper border-ink/15 text-ink-soft"
                       }`}>
                         <Bell className="w-4 h-4" />
-                        <span>4. Ready for Pickup</span>
+                        <span>3. Ready for Pickup</span>
                       </div>
                     </div>
                   </div>
