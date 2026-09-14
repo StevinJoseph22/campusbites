@@ -86,82 +86,406 @@ export default function SuperAdminPage() {
     return true;
   });
 
+  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
+
+  // Calculate Restaurant-wise Sales (strictly Food Items + Parcel Packaging, excluding Platform and Convenience fees)
+  const restaurantSalesData = restaurants.map(res => {
+    let ordersCount = 0;
+    let fulfilledCount = 0;
+    let refundedCount = 0;
+    let foodItemSales = 0;
+    let parcelCharges = 0;
+    let refundedAmount = 0;
+
+    filteredOrders.forEach(order => {
+      const portion = order.vendorPortions?.find((p: any) => p.stallId === res.id || p.stallName === res.name);
+      if (portion) {
+        ordersCount++;
+        const isPortionRefunded = portion.status === "REFUNDED" || order.paymentStatus === "REFUNDED";
+        
+        if (portion.status === "FULFILLED") {
+          fulfilledCount++;
+        }
+        if (isPortionRefunded) {
+          refundedCount++;
+        }
+
+        // Calculate food items sum and check OOS
+        let portionFoodSum = 0;
+        if (Array.isArray(portion.items)) {
+          portion.items.forEach((item: any) => {
+            const itemPrice = Number(item.price) || 0;
+            const itemQty = Number(item.quantity) || 1;
+            const itemTotal = itemPrice * itemQty;
+            const isOos = Boolean(item.outOfStock || item.refunded || isPortionRefunded);
+
+            if (isOos) {
+              refundedAmount += itemTotal;
+            } else {
+              portionFoodSum += itemTotal;
+            }
+          });
+        }
+
+        if (!isPortionRefunded) {
+          foodItemSales += portionFoodSum;
+          // Calculate parcel packaging fee for this portion
+          const portionParcel = Math.max(0, (Number(portion.subtotal) || portionFoodSum) - portionFoodSum);
+          parcelCharges += portionParcel;
+        }
+      }
+    });
+
+    const netRestaurantSales = foodItemSales + parcelCharges; // Pure restaurant sales (Excludes Platform & Convenience fees)
+
+    return {
+      stallId: res.id,
+      name: res.name,
+      tokenPrefix: res.tokenPrefix,
+      campus: res.campus || "Airport Road Campus",
+      logo: res.logo,
+      floor: res.floor,
+      ordersCount,
+      fulfilledCount,
+      refundedCount,
+      foodItemSales,
+      parcelCharges,
+      netRestaurantSales,
+      refundedAmount
+    };
+  });
+
+  const filteredRestaurantSales = restaurantSalesData.filter(r => 
+    r.name.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
+    r.stallId.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
+    r.campus.toLowerCase().includes(restaurantSearchQuery.toLowerCase())
+  );
+
   const handleExportToExcel = async () => {
     if (typeof window === "undefined") return;
     try {
       const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "CampusBites Admin";
+      workbook.created = new Date();
 
-      const summaryData = [
-        { Metric: "Report Period Start", Value: startDate || "All Time" },
-        { Metric: "Report Period End", Value: endDate || "All Time" },
-        { Metric: "Total Placed Orders", Value: filteredOrders.length },
-        { 
-          Metric: "Gross Sales (INR)", 
-          Value: filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0)
-        },
-        { 
-          Metric: "Food Item Sales (INR)", 
-          Value: filteredOrders.reduce((sum, o) => {
-            return sum + o.vendorPortions.reduce((pSum: number, portion: any) => {
-              return pSum + portion.items.reduce((iSum: number, i: any) => iSum + i.price * i.quantity, 0);
-            }, 0);
-          }, 0)
-        },
-        {
-          Metric: "Takeaway Packaging Charges (INR)",
-          Value: filteredOrders.reduce((sum, o) => sum + (o.packagingFeeAmount || 0), 0)
-        },
-        {
-          Metric: "Platform Fees (INR)",
-          Value: filteredOrders.reduce((sum, o) => sum + (o.platformFeeAmount || 0), 0)
-        },
-        {
-          Metric: "Convenience Fees (INR)",
-          Value: filteredOrders.reduce((sum, o) => sum + (o.convenienceFeeAmount || 0), 0)
-        }
+      // Common styling helpers
+      const applyHeaderStyle = (row: any, bgColorHex = "FF1E293B") => {
+        row.eachCell((cell: any) => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgColorHex } };
+          cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+          cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+          cell.border = {
+            top: { style: "thin", color: { argb: "FF94A3B8" } },
+            left: { style: "thin", color: { argb: "FF94A3B8" } },
+            bottom: { style: "medium", color: { argb: "FF475569" } },
+            right: { style: "thin", color: { argb: "FF94A3B8" } }
+          };
+        });
+        row.height = 28;
+      };
+
+      const autoFitColumns = (sheet: any) => {
+        sheet.columns.forEach((column: any) => {
+          let maxLen = 14;
+          column.eachCell?.({ includeEmpty: true }, (cell: any) => {
+            const valStr = cell.value ? cell.value.toString() : "";
+            maxLen = Math.max(maxLen, valStr.length + 4);
+          });
+          column.width = Math.min(maxLen, 45);
+        });
+      };
+
+      // ----------------------------------------------------
+      // SHEET 1: Financial Summary
+      // ----------------------------------------------------
+      const summarySheet = workbook.addWorksheet("Financial Summary");
+      summarySheet.columns = [
+        { header: "Metric / Financial Indicator", key: "Metric", width: 35 },
+        { header: "Value (INR / Count)", key: "Value", width: 25 }
+      ];
+      applyHeaderStyle(summarySheet.getRow(1), "FF0F172A");
+
+      const totalGrossSales = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+      const totalFoodSales = filteredOrders.reduce((sum, o) => {
+        return sum + (o.vendorPortions || []).reduce((pSum: number, portion: any) => {
+          if (portion.status === "REFUNDED") return pSum;
+          return pSum + (portion.items || []).reduce((iSum: number, i: any) => {
+            if (i.outOfStock || i.refunded) return iSum;
+            return iSum + (Number(i.price) || 0) * (Number(i.quantity) || 1);
+          }, 0);
+        }, 0);
+      }, 0);
+      const totalTakeawayCharges = filteredOrders.reduce((sum, o) => sum + (o.packagingFeeAmount || 0), 0);
+      const totalPlatformFees = filteredOrders.reduce((sum, o) => sum + (o.platformFeeAmount || 0), 0);
+      const totalConvenienceFees = filteredOrders.reduce((sum, o) => sum + (o.convenienceFeeAmount || 0), 0);
+      const totalRestaurantPayouts = totalFoodSales + totalTakeawayCharges;
+
+      const summaryRows = [
+        ["Report Period Start", startDate || "All Time"],
+        ["Report Period End", endDate || "All Time"],
+        ["Total Placed Orders", filteredOrders.length],
+        ["Gross Sales Revenue (INR)", `₹${totalGrossSales.toFixed(2)}`],
+        ["Total Food Item Sales (INR)", `₹${totalFoodSales.toFixed(2)}`],
+        ["Takeaway Packaging / Parcel Fees (INR)", `₹${totalTakeawayCharges.toFixed(2)}`],
+        ["Total Net Restaurant Payouts (INR) [Items + Parcel]", `₹${totalRestaurantPayouts.toFixed(2)}`],
+        ["Platform Fee Collection (INR)", `₹${totalPlatformFees.toFixed(2)}`],
+        ["Convenience Fee Collection (INR)", `₹${totalConvenienceFees.toFixed(2)}`],
+        ["Total System Service Charges (INR) [Platform + Convenience]", `₹${(totalPlatformFees + totalConvenienceFees).toFixed(2)}`]
       ];
 
-      const detailedData: any[] = [];
+      summaryRows.forEach((r, idx) => {
+        const row = summarySheet.addRow(r);
+        row.height = 22;
+        if (idx >= 3) {
+          row.getCell(2).font = { bold: true };
+        }
+      });
+      autoFitColumns(summarySheet);
+
+      // ----------------------------------------------------
+      // SHEET 2: Restaurant-wise Sales
+      // ----------------------------------------------------
+      const restSheet = workbook.addWorksheet("Restaurant-wise Sales");
+      restSheet.columns = [
+        { header: "Stall ID", key: "stallId", width: 18 },
+        { header: "Restaurant Name", key: "name", width: 35 },
+        { header: "Campus Location", key: "campus", width: 22 },
+        { header: "Floor", key: "floor", width: 15 },
+        { header: "Total Orders", key: "ordersCount", width: 14 },
+        { header: "Fulfilled Orders", key: "fulfilledCount", width: 16 },
+        { header: "Refunded / OOS Orders", key: "refundedCount", width: 22 },
+        { header: "Food Item Sales (INR)", key: "foodItemSales", width: 22 },
+        { header: "Parcel Charges (INR)", key: "parcelCharges", width: 20 },
+        { header: "Net Restaurant Sales (INR)", key: "netRestaurantSales", width: 26 },
+        { header: "Refunded Amount (INR)", key: "refundedAmount", width: 22 }
+      ];
+      applyHeaderStyle(restSheet.getRow(1), "FF1E3A8A"); // Dark Blue Header
+
+      let sumRestOrders = 0;
+      let sumRestFulfilled = 0;
+      let sumRestRefunded = 0;
+      let sumRestFood = 0;
+      let sumRestParcel = 0;
+      let sumRestNet = 0;
+      let sumRestRefundAmt = 0;
+
+      restaurantSalesData.forEach(r => {
+        sumRestOrders += r.ordersCount;
+        sumRestFulfilled += r.fulfilledCount;
+        sumRestRefunded += r.refundedCount;
+        sumRestFood += r.foodItemSales;
+        sumRestParcel += r.parcelCharges;
+        sumRestNet += r.netRestaurantSales;
+        sumRestRefundAmt += r.refundedAmount;
+
+        const row = restSheet.addRow([
+          r.stallId,
+          r.name,
+          r.campus,
+          r.floor,
+          r.ordersCount,
+          r.fulfilledCount,
+          r.refundedCount,
+          Number(r.foodItemSales.toFixed(2)),
+          Number(r.parcelCharges.toFixed(2)),
+          Number(r.netRestaurantSales.toFixed(2)),
+          Number(r.refundedAmount.toFixed(2))
+        ]);
+        row.height = 20;
+      });
+
+      // Total summary row for restaurants
+      const restTotalRow = restSheet.addRow([
+        "TOTAL",
+        "ALL RESTAURANTS COMBINED",
+        "-",
+        "-",
+        sumRestOrders,
+        sumRestFulfilled,
+        sumRestRefunded,
+        Number(sumRestFood.toFixed(2)),
+        Number(sumRestParcel.toFixed(2)),
+        Number(sumRestNet.toFixed(2)),
+        Number(sumRestRefundAmt.toFixed(2))
+      ]);
+      restTotalRow.height = 24;
+      restTotalRow.eachCell((cell: any) => {
+        cell.font = { bold: true, color: { argb: "FF0F172A" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+        cell.border = {
+          top: { style: "medium", color: { argb: "FF475569" } },
+          bottom: { style: "double", color: { argb: "FF0F172A" } }
+        };
+      });
+      autoFitColumns(restSheet);
+
+      // ----------------------------------------------------
+      // SHEET 3: Order Details (Highlighting Out of Stock & Refunded in Red)
+      // ----------------------------------------------------
+      const detailsSheet = workbook.addWorksheet("Order Details & OOS Items");
+      detailsSheet.columns = [
+        { header: "Master Token", key: "masterToken", width: 18 },
+        { header: "Order ID", key: "orderId", width: 22 },
+        { header: "Placing Date/Time", key: "dateTime", width: 22 },
+        { header: "Customer Identifier", key: "customer", width: 26 },
+        { header: "Canteen Name", key: "stallName", width: 30 },
+        { header: "Canteen Token", key: "tokenNumber", width: 18 },
+        { header: "Pickup Slot", key: "pickupTimeSlot", width: 16 },
+        { header: "Dish Name", key: "dishName", width: 26 },
+        { header: "Unit Price (INR)", key: "unitPrice", width: 16 },
+        { header: "Quantity", key: "quantity", width: 12 },
+        { header: "Dish Subtotal (INR)", key: "subtotal", width: 18 },
+        { header: "Item Status", key: "itemStatus", width: 24 },
+        { header: "Portion Status", key: "portionStatus", width: 16 },
+        { header: "Payment Status", key: "paymentStatus", width: 16 }
+      ];
+      applyHeaderStyle(detailsSheet.getRow(1), "FF1E293B");
+
       filteredOrders.forEach(order => {
-        order.vendorPortions.forEach((portion: any) => {
-          portion.items.forEach((item: any) => {
-            detailedData.push({
-              "Master Token": order.masterToken,
-              "Order ID": order.orderId,
-              "Placing Date/Time": order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN") : order.placedAt,
-              "Customer Phone/Email": order.email || "N/A",
-              "Canteen Name": portion.stallName,
-              "Canteen Token": portion.tokenNumber,
-              "Pickup Time Slot": portion.pickupTimeSlot,
-              "Dish Name": item.name,
-              "Unit Price (INR)": item.price,
-              "Quantity Ordered": item.quantity,
-              "Dish Subtotal (INR)": item.price * item.quantity,
-              "Order Packaging Fee (INR)": order.packagingFeeAmount || 0,
-              "Order Platform Fee (INR)": order.platformFeeAmount || 0,
-              "Order Convenience Fee (INR)": order.convenienceFeeAmount || 0,
-              "Portion Status": portion.status,
-              "Payment Status": order.paymentStatus
-            });
+        const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN") : order.placedAt;
+        const customerStr = order.studentRegNumber || order.studentName || order.email || "Student";
+        const isOrderRefunded = order.paymentStatus === "REFUNDED";
+
+        (order.vendorPortions || []).forEach((portion: any) => {
+          const isPortionRefunded = portion.status === "REFUNDED" || isOrderRefunded;
+
+          (portion.items || []).forEach((item: any) => {
+            const isOos = Boolean(item.outOfStock || item.refunded || isPortionRefunded);
+            const itemStatusStr = isOos 
+              ? "OUT OF STOCK / REFUNDED" 
+              : portion.status === "FULFILLED" 
+              ? "Fulfilled" 
+              : "Active & Ordered";
+
+            const row = detailsSheet.addRow([
+              order.masterToken,
+              order.orderId,
+              dateTimeStr,
+              customerStr,
+              portion.stallName,
+              portion.tokenNumber,
+              portion.pickupTimeSlot,
+              item.name,
+              item.price,
+              item.quantity,
+              item.price * item.quantity,
+              itemStatusStr,
+              portion.status,
+              order.paymentStatus
+            ]);
+            row.height = 20;
+
+            // MARK IN RED COLOR IF OUT OF STOCK / REFUNDED!
+            if (isOos) {
+              row.eachCell((cell: any) => {
+                cell.fill = {
+                  type: "pattern",
+                  pattern: "solid",
+                  fgColor: { argb: "FFFFEAEA" } // Light Red Fill
+                };
+                cell.font = {
+                  color: { argb: "FFB91C1C" }, // Bold Dark Red Font
+                  bold: true
+                };
+              });
+            }
           });
         });
       });
+      autoFitColumns(detailsSheet);
 
-      const addSheet = (name: string, rows: Record<string, unknown>[]) => {
-        const sheet = workbook.addWorksheet(name);
-        if (rows.length > 0) {
-          sheet.columns = Object.keys(rows[0]).map((key) => ({ header: key, key }));
-          sheet.addRows(rows);
-        }
-      };
+      // ----------------------------------------------------
+      // SHEET 4: Convenience & Platform Charges
+      // ----------------------------------------------------
+      const feeSheet = workbook.addWorksheet("Platform & Convenience Fees");
+      feeSheet.columns = [
+        { header: "Master Token", key: "masterToken", width: 18 },
+        { header: "Order ID", key: "orderId", width: 22 },
+        { header: "Date/Time", key: "dateTime", width: 22 },
+        { header: "Customer", key: "customer", width: 24 },
+        { header: "Food Subtotal (INR)", key: "foodSubtotal", width: 20 },
+        { header: "Packaging Fee (INR)", key: "packagingFee", width: 20 },
+        { header: "Platform Fee (INR)", key: "platformFee", width: 18 },
+        { header: "Convenience Fee (INR)", key: "convenienceFee", width: 22 },
+        { header: "Total Service Fee (INR)", key: "totalServiceFee", width: 22 },
+        { header: "Grand Total (INR)", key: "grandTotal", width: 20 },
+        { header: "Payment Status", key: "paymentStatus", width: 16 }
+      ];
+      applyHeaderStyle(feeSheet.getRow(1), "FF581C87"); // Purple Header
 
-      const workbook = new ExcelJS.Workbook();
-      addSheet("Financial Summary", summaryData);
-      addSheet("Order Details", detailedData);
+      let sumFoodSubtotal = 0;
+      let sumPackagingFee = 0;
+      let sumPlatformFee = 0;
+      let sumConvenienceFee = 0;
+      let sumTotalServiceFee = 0;
+      let sumGrandTotal = 0;
 
+      filteredOrders.forEach(order => {
+        const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN") : order.placedAt;
+        const customerStr = order.studentRegNumber || order.studentName || order.email || "Student";
+        
+        const foodSub = (order.vendorPortions || []).reduce((pSum: number, portion: any) => {
+          return pSum + (portion.items || []).reduce((iSum: number, i: any) => iSum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+        }, 0);
+        const pkgFee = Number(order.packagingFeeAmount) || 0;
+        const platFee = Number(order.platformFeeAmount) || 0;
+        const convFee = Number(order.convenienceFeeAmount) || 0;
+        const serviceFee = platFee + convFee;
+        const total = Number(order.totalAmount) || 0;
+
+        sumFoodSubtotal += foodSub;
+        sumPackagingFee += pkgFee;
+        sumPlatformFee += platFee;
+        sumConvenienceFee += convFee;
+        sumTotalServiceFee += serviceFee;
+        sumGrandTotal += total;
+
+        const row = feeSheet.addRow([
+          order.masterToken,
+          order.orderId,
+          dateTimeStr,
+          customerStr,
+          Number(foodSub.toFixed(2)),
+          Number(pkgFee.toFixed(2)),
+          Number(platFee.toFixed(2)),
+          Number(convFee.toFixed(2)),
+          Number(serviceFee.toFixed(2)),
+          Number(total.toFixed(2)),
+          order.paymentStatus
+        ]);
+        row.height = 20;
+      });
+
+      // Total sum row for platform and convenience fees
+      const feeTotalRow = feeSheet.addRow([
+        "TOTAL",
+        "ALL ORDERS SUM",
+        "-",
+        "-",
+        Number(sumFoodSubtotal.toFixed(2)),
+        Number(sumPackagingFee.toFixed(2)),
+        Number(sumPlatformFee.toFixed(2)),
+        Number(sumConvenienceFee.toFixed(2)),
+        Number(sumTotalServiceFee.toFixed(2)),
+        Number(sumGrandTotal.toFixed(2)),
+        "-"
+      ]);
+      feeTotalRow.height = 24;
+      feeTotalRow.eachCell((cell: any) => {
+        cell.font = { bold: true, color: { argb: "FF0F172A" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+        cell.border = {
+          top: { style: "medium", color: { argb: "FF475569" } },
+          bottom: { style: "double", color: { argb: "FF0F172A" } }
+        };
+      });
+      autoFitColumns(feeSheet);
+
+      // Write and download
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -628,6 +952,122 @@ export default function SuperAdminPage() {
             <span className="text-[11px] font-mono text-slate-500">
               Total (₹{(filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0)).toFixed(2)}) = Items + Takeaway + Platform + Convenience
             </span>
+          </div>
+        </div>
+
+        {/* Restaurant-wise Sales Breakdown */}
+        <div className="glass-panel p-6 rounded-3xl border-slate-800 space-y-6 bg-slate-950/40 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div>
+              <h2 className="text-base font-black text-white flex items-center gap-2">
+                <Store className="w-5 h-5 text-orange-400" /> Restaurant-wise Sales Breakdown ({filteredRestaurantSales.length})
+              </h2>
+              <p className="text-[10px] text-slate-400">
+                Individual stall net revenue (Food Items + Parcel Charges only — strictly excludes platform & convenience fees)
+              </p>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={restaurantSearchQuery}
+                onChange={(e) => setRestaurantSearchQuery(e.target.value)}
+                placeholder="Search restaurant or campus..."
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900/30">
+            <table className="w-full border-collapse text-left text-xs">
+              <thead>
+                <tr className="bg-slate-900/80 border-b border-slate-800 text-[11px] font-bold text-slate-400">
+                  <th className="p-3.5">Restaurant / Stall</th>
+                  <th className="p-3.5">Campus</th>
+                  <th className="p-3.5 text-center">Orders</th>
+                  <th className="p-3.5 text-right">Food Item Sales</th>
+                  <th className="p-3.5 text-right">Parcel Charges</th>
+                  <th className="p-3.5 text-right text-emerald-400">Net Restaurant Sales</th>
+                  <th className="p-3.5 text-right">Refunded / OOS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {filteredRestaurantSales.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-500 font-medium">
+                      No restaurant sales recorded for the selected period.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRestaurantSales.map((r) => (
+                    <tr key={r.stallId} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="p-3.5">
+                        <div className="flex items-center gap-3">
+                          <img src={r.logo} alt={r.name} className="w-9 h-9 rounded-xl object-cover border border-slate-700 shrink-0" />
+                          <div>
+                            <p className="font-extrabold text-white text-xs">{r.name}</p>
+                            <span className="text-[10px] font-mono text-orange-400 font-bold">{r.tokenPrefix}</span>
+                            <span className="text-[10px] text-slate-500 ml-2">({r.floor})</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3.5">
+                        <span className="px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-300 text-[10px] font-bold">
+                          {r.campus}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-center font-mono">
+                        <span className="text-white font-bold">{r.ordersCount}</span>
+                        <span className="text-emerald-400 text-[10px] block">({r.fulfilledCount} fulfilled)</span>
+                      </td>
+                      <td className="p-3.5 text-right font-mono font-semibold text-slate-200">
+                        ₹{r.foodItemSales.toFixed(2)}
+                      </td>
+                      <td className="p-3.5 text-right font-mono font-semibold text-blue-400">
+                        ₹{r.parcelCharges.toFixed(2)}
+                      </td>
+                      <td className="p-3.5 text-right font-mono font-black text-emerald-400 text-sm">
+                        ₹{r.netRestaurantSales.toFixed(2)}
+                      </td>
+                      <td className="p-3.5 text-right font-mono text-xs">
+                        {r.refundedAmount > 0 ? (
+                          <span className="text-red-400 font-bold bg-red-950/30 px-2 py-0.5 rounded border border-red-500/30">
+                            ₹{r.refundedAmount.toFixed(2)} ({r.refundedCount})
+                          </span>
+                        ) : (
+                          <span className="text-slate-600 font-mono">₹0.00</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {filteredRestaurantSales.length > 0 && (
+                <tfoot>
+                  <tr className="bg-slate-900 border-t-2 border-slate-700 font-bold text-xs">
+                    <td colSpan={2} className="p-3.5 text-white uppercase tracking-wider font-extrabold">
+                      Total Payout to All Restaurants
+                    </td>
+                    <td className="p-3.5 text-center font-mono text-white">
+                      {filteredRestaurantSales.reduce((sum, r) => sum + r.ordersCount, 0)}
+                    </td>
+                    <td className="p-3.5 text-right font-mono text-slate-200">
+                      ₹{filteredRestaurantSales.reduce((sum, r) => sum + r.foodItemSales, 0).toFixed(2)}
+                    </td>
+                    <td className="p-3.5 text-right font-mono text-blue-400">
+                      ₹{filteredRestaurantSales.reduce((sum, r) => sum + r.parcelCharges, 0).toFixed(2)}
+                    </td>
+                    <td className="p-3.5 text-right font-mono text-emerald-400 font-black text-sm">
+                      ₹{filteredRestaurantSales.reduce((sum, r) => sum + r.netRestaurantSales, 0).toFixed(2)}
+                    </td>
+                    <td className="p-3.5 text-right font-mono text-red-400">
+                      ₹{filteredRestaurantSales.reduce((sum, r) => sum + r.refundedAmount, 0).toFixed(2)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
           </div>
         </div>
 

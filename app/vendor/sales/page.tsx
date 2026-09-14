@@ -13,7 +13,9 @@ import {
   IndianRupee,
   ShoppingBag,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Download,
+  AlertTriangle
 } from "lucide-react";
 
 export default function VendorSalesReportPage() {
@@ -27,6 +29,134 @@ export default function VendorSalesReportPage() {
 
   const [todaySales, setTodaySales] = useState(0);
   const [yesterdaySales, setYesterdaySales] = useState(0);
+
+  const handleExportVendorExcel = async () => {
+    if (typeof window === "undefined") return;
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = activeVendor.name;
+      workbook.created = new Date();
+
+      const sheet = workbook.addWorksheet("Sales & OOS Refunds");
+      sheet.columns = [
+        { header: "Placing Time", key: "time", width: 18 },
+        { header: "Token Number", key: "token", width: 18 },
+        { header: "Customer", key: "customer", width: 22 },
+        { header: "Dish Name", key: "dishName", width: 28 },
+        { header: "Unit Price (INR)", key: "price", width: 16 },
+        { header: "Quantity", key: "quantity", width: 12 },
+        { header: "Item Total (INR)", key: "total", width: 16 },
+        { header: "Stock / Refund Status", key: "stockStatus", width: 25 },
+        { header: "Order Status", key: "orderStatus", width: 16 }
+      ];
+
+      // Header style
+      const headerRow = sheet.getRow(1);
+      headerRow.height = 26;
+      headerRow.eachCell((cell: any) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E293B" } };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      });
+
+      let netFoodTotal = 0;
+      let totalRefunded = 0;
+
+      filteredOrders.forEach((order) => {
+        const isOrderRefunded = order.status === "REFUNDED";
+        const customerName = order.studentName || order.studentRegNumber || "Student";
+
+        (order.items || []).forEach((it: any) => {
+          const itemPrice = Number(it.price) || 0;
+          const itemQty = Number(it.quantity) || 1;
+          const itemSubtotal = itemPrice * itemQty;
+          const isOos = Boolean(it.outOfStock || it.refunded || isOrderRefunded);
+
+          if (isOos) {
+            totalRefunded += itemSubtotal;
+          } else {
+            netFoodTotal += itemSubtotal;
+          }
+
+          const stockStatusStr = isOos ? "OUT OF STOCK / REFUNDED" : "In Stock (Fulfilled)";
+
+          const row = sheet.addRow([
+            order.placedAt || "--",
+            order.tokenNumber,
+            customerName,
+            it.name,
+            itemPrice,
+            itemQty,
+            itemSubtotal,
+            stockStatusStr,
+            order.status
+          ]);
+          row.height = 20;
+
+          // Highlight Out of Stock / Refunded rows in RED color!
+          if (isOos) {
+            row.eachCell((cell: any) => {
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFFEAEA" } // Light Red Fill
+              };
+              cell.font = {
+                color: { argb: "FFB91C1C" }, // Bold Dark Red Font
+                bold: true
+              };
+            });
+          }
+        });
+      });
+
+      // Total summary row
+      const summaryRow = sheet.addRow([
+        "TOTAL",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
+        netFoodTotal,
+        `Refunded: ₹${totalRefunded}`,
+        "-"
+      ]);
+      summaryRow.height = 24;
+      summaryRow.eachCell((cell: any) => {
+        cell.font = { bold: true, color: { argb: "FF0F172A" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+        cell.border = {
+          top: { style: "medium", color: { argb: "FF475569" } },
+          bottom: { style: "double", color: { argb: "FF0F172A" } }
+        };
+      });
+
+      // Auto fit columns
+      sheet.columns.forEach((column: any) => {
+        let maxLen = 14;
+        column.eachCell?.({ includeEmpty: true }, (cell: any) => {
+          const valStr = cell.value ? cell.value.toString() : "";
+          maxLen = Math.max(maxLen, valStr.length + 3);
+        });
+        column.width = Math.min(maxLen, 40);
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${activeVendor.id}_Sales_Report_${Date.now()}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Vendor Excel export failed", e);
+    }
+  };
 
   const fetchOrders = async (vendorId: string) => {
     try {
@@ -327,9 +457,19 @@ export default function VendorSalesReportPage() {
 
         {/* Transaction History */}
         <div className="space-y-3">
-          <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-            <ShoppingBag className="w-4 h-4 text-marigold" /> Transaction History ({filteredOrders.length})
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+              <ShoppingBag className="w-4 h-4 text-marigold" /> Transaction History ({filteredOrders.length})
+            </h3>
+
+            <button
+              onClick={handleExportVendorExcel}
+              className="btn-primary py-1.5 px-3.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-transform self-start sm:self-auto"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export Sales Report (.xlsx)</span>
+            </button>
+          </div>
 
           <div className="card-surface overflow-hidden">
             <div className="overflow-x-auto">
@@ -338,7 +478,7 @@ export default function VendorSalesReportPage() {
                   <tr className="bg-cardstock border-b border-ink/10 font-bold text-ink-soft">
                     <th className="p-3">Time</th>
                     <th className="p-3">Token</th>
-                    <th className="p-3">Items</th>
+                    <th className="p-3">Items & Stock Status</th>
                     <th className="p-3 text-right">Subtotal</th>
                     <th className="p-3 text-center">Status</th>
                   </tr>
@@ -351,39 +491,60 @@ export default function VendorSalesReportPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order, idx) => (
-                      <tr key={idx} className="hover:bg-cardstock-hover transition-colors">
-                        <td className="p-3 text-ink-soft font-mono">{order.placedAt || "--"}</td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded bg-marigold/10 border border-marigold/30 text-marigold font-mono font-bold">
-                            {order.tokenNumber}
-                          </span>
-                        </td>
-                        <td className="p-3 min-w-[200px]">
-                          <div className="space-y-0.5">
-                            {order.items?.map((it: any, i: number) => (
-                              <p key={i} className="text-ink text-xs">
-                                {it.name} <span className="text-[10px] text-ink-soft">x{it.quantity}</span>
-                              </p>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-mono font-bold text-ink">₹{order.subtotal}</td>
-                        <td className="p-3 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            order.status === "FULFILLED"
-                              ? "bg-sage-soft border border-sage/30 text-sage"
-                              : order.status === "READY"
-                              ? "bg-marigold/10 border border-marigold/30 text-marigold"
-                              : order.status === "REFUNDED"
-                              ? "bg-chili-soft border border-chili/30 text-chili"
-                              : "bg-cardstock border border-ink/15 text-ink-soft"
-                          }`}>
-                            {order.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    filteredOrders.map((order, idx) => {
+                      const isOrderRefunded = order.status === "REFUNDED";
+                      return (
+                        <tr key={idx} className={`transition-colors ${isOrderRefunded ? "bg-chili/5 hover:bg-chili/10" : "hover:bg-cardstock-hover"}`}>
+                          <td className="p-3 text-ink-soft font-mono">{order.placedAt || "--"}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded bg-marigold/10 border border-marigold/30 text-marigold font-mono font-bold">
+                              {order.tokenNumber}
+                            </span>
+                          </td>
+                          <td className="p-3 min-w-[240px]">
+                            <div className="space-y-1">
+                              {order.items?.map((it: any, i: number) => {
+                                const isOos = Boolean(it.outOfStock || it.refunded || isOrderRefunded);
+                                return (
+                                  <div key={i} className="flex items-center justify-between gap-2 text-xs">
+                                    <span className={isOos ? "text-chili line-through font-medium" : "text-ink"}>
+                                      {it.name} <span className="text-[10px] text-ink-soft">x{it.quantity}</span>
+                                    </span>
+                                    {isOos ? (
+                                      <span className="px-1.5 py-0.5 rounded bg-chili-soft border border-chili/30 text-chili text-[9px] font-bold shrink-0 flex items-center gap-0.5">
+                                        <AlertTriangle className="w-2.5 h-2.5" /> Out of Stock (Refunded)
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-mono text-ink-soft">
+                                        ₹{(Number(it.price) || 0) * (Number(it.quantity) || 1)}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-ink">
+                            <span className={isOrderRefunded ? "text-chili line-through" : "text-ink"}>
+                              ₹{order.subtotal}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              order.status === "FULFILLED"
+                                ? "bg-sage-soft border border-sage/30 text-sage"
+                                : order.status === "READY"
+                                ? "bg-marigold/10 border border-marigold/30 text-marigold"
+                                : order.status === "REFUNDED"
+                                ? "bg-chili-soft border border-chili/30 text-chili"
+                                : "bg-cardstock border border-ink/15 text-ink-soft"
+                            }`}>
+                              {order.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

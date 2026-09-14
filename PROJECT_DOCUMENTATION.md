@@ -87,9 +87,12 @@ CampusBites eliminates physical queueing by providing an end-to-end digital life
   - **Platform Service Commissions** (Administrative revenue)
 - **Zero-Error Mathematical Reconciliation**: Verified identity:
   $$\text{Gross Sales} = \text{Food Item Charges} + \text{Parcel Charges} + \text{Platform Fees}$$
-- **Multi-Sheet Excel Auditing Tool**: Exports presentation-ready Excel spreadsheets (`.xlsx`) containing:
-  - **Sheet 1 (`Financial Summary`)**: Period dates, total orders, sales breakdowns, fees.
-  - **Sheet 2 (`Order Details`)**: Row-by-row item breakdown mapping Master Token, Order ID, Date/Time, Student Email, Canteen Name, Dish Name, Unit Price, Quantity, Subtotal, Parcel Fee, and Platform Fee.
+- **Restaurant-wise Sales Ledger**: Real-time breakdown of sales by individual canteen stall calculating pure restaurant net revenue (`Food Items + Parcel Charges`, strictly excluding platform and convenience fees).
+- **Comprehensive 4-Sheet Excel Auditing Tool**: Exports presentation-ready Excel workbooks (`.xlsx`) containing:
+  - **Sheet 1 (`Financial Summary`)**: Period dates, total orders, gross sales, food item sales, parcel fees, net restaurant payouts, platform fees, and convenience fees.
+  - **Sheet 2 (`Restaurant-wise Sales`)**: Row-by-row stall ledger with Stall ID, Name, Campus, Orders, Food Item Sales, Parcel Charges, Net Restaurant Payout, and Refunded Amounts with totals.
+  - **Sheet 3 (`Order Details & OOS Items`)**: Detailed dish-by-dish audit mapping Master Token, Order ID, Date/Time, Student, Stall, Token, Dish, Unit Price, Quantity, Subtotal, and Status — with **Out of Stock (OOS) & Refunded items highlighted in light red fill (`#FFEAEA`)**.
+  - **Sheet 4 (`Platform & Convenience Fees`)**: Order-by-order breakdown of Food Subtotal, Packaging Fee, Platform Fee, Convenience Fee, Total Service Fee, and Grand Total with a formatted **Total Sum Row**.
 - **Student Register Directory**: Inspect all registered student university roll numbers and accounts.
 
 ---

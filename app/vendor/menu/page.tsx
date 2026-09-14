@@ -720,7 +720,7 @@ export default function VendorMenuPage() {
                 <input
                   type="text"
                   required
-                  value={editingItem.name}
+                  value={editingItem.name || ""}
                   onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
                   className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none"
                 />
@@ -730,7 +730,7 @@ export default function VendorMenuPage() {
                 <label className="font-bold text-ink-soft">Description</label>
                 <textarea
                   rows={2}
-                  value={editingItem.description}
+                  value={editingItem.description || ""}
                   onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })}
                   className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none"
                 />
@@ -742,7 +742,7 @@ export default function VendorMenuPage() {
                   <input
                     type="number"
                     required
-                    value={editingItem.price}
+                    value={editingItem.price ?? ""}
                     onChange={(e) => setEditingItem({ ...editingItem, price: Number(e.target.value) })}
                     className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none"
                   />
@@ -752,7 +752,7 @@ export default function VendorMenuPage() {
                   <label className="font-bold text-ink-soft">Daily Stock Count</label>
                   <input
                     type="number"
-                    value={editingItem.stockCount}
+                    value={editingItem.stockCount ?? 0}
                     onChange={(e) => setEditingItem({ ...editingItem, stockCount: Number(e.target.value) })}
                     className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none"
                   />
@@ -763,7 +763,7 @@ export default function VendorMenuPage() {
                 <div>
                   <label className="font-bold text-ink-soft">Stock Type</label>
                   <select
-                    value={editingItem.stockType}
+                    value={editingItem.stockType || "COUNTED"}
                     onChange={(e) => setEditingItem({ ...editingItem, stockType: e.target.value as any })}
                     className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none"
                   >
@@ -775,7 +775,7 @@ export default function VendorMenuPage() {
                 <div>
                   <label className="font-bold text-ink-soft">Category</label>
                   <select
-                    value={editingItem.category}
+                    value={editingItem.category || "Veg"}
                     onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
                     className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none"
                   >
@@ -789,7 +789,7 @@ export default function VendorMenuPage() {
                 <label className="font-bold text-ink-soft">Takeaway Container Fee (₹)</label>
                 <input
                   type="number"
-                  value={editingItem.takeawayCharge}
+                  value={editingItem.takeawayCharge ?? 10}
                   onChange={(e) => setEditingItem({ ...editingItem, takeawayCharge: Number(e.target.value) })}
                   className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none"
                 />
@@ -799,7 +799,7 @@ export default function VendorMenuPage() {
                 <input
                   type="checkbox"
                   id="editIsVeg"
-                  checked={editingItem.isVeg}
+                  checked={Boolean(editingItem.isVeg)}
                   onChange={(e) => setEditingItem({ ...editingItem, isVeg: e.target.checked })}
                   className="w-4 h-4 rounded border-ink/20"
                 />
@@ -810,7 +810,7 @@ export default function VendorMenuPage() {
                 <input
                   type="checkbox"
                   id="editIsBestseller"
-                  checked={editingItem.isBestseller}
+                  checked={Boolean(editingItem.isBestseller)}
                   onChange={(e) => setEditingItem({ ...editingItem, isBestseller: e.target.checked })}
                   className="w-4 h-4 rounded border-ink/20"
                 />
@@ -835,7 +835,7 @@ export default function VendorMenuPage() {
                   <label className="font-bold text-ink-soft">Offer Value</label>
                   <input
                     type="number"
-                    value={editingItem.offerValue || 0}
+                    value={editingItem.offerValue ?? 0}
                     onChange={(e) => setEditingItem({ ...editingItem, offerValue: Number(e.target.value) })}
                     className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
                   />

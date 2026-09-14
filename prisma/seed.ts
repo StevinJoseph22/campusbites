@@ -61,6 +61,27 @@ async function main() {
     },
   });
 
+  // Seed student account 21bcaf59
+  const studentPasswordHash = await bcrypt.hash("student123", 10);
+  await prisma.user.upsert({
+    where: { username: "21bcaf59" },
+    update: {
+      passwordHash: studentPasswordHash,
+      role: "STUDENT",
+      email: "21bcaf59@kristujayanti.com",
+      name: "Stevin Joseph",
+      campus: "Airport Road Campus"
+    },
+    create: {
+      username: "21bcaf59",
+      email: "21bcaf59@kristujayanti.com",
+      name: "Stevin Joseph",
+      role: "STUDENT",
+      passwordHash: studentPasswordHash,
+      campus: "Airport Road Campus"
+    }
+  });
+
   // Seed default vendors
   const vendors = [
     // Central Campus (CC)

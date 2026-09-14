@@ -21,8 +21,8 @@
 - ⏰ **15-Minute Pickup Slot Scheduler**: Smart queue management with live Kitchen Rush buffer estimators (`Rush Less`, `Moderate`, `High Rush`).
 - 🛒 **Unified Multi-Vendor Cart**: Order dishes from multiple campus stalls in a single checkout session.
 - 💳 **Razorpay Payment Gateway**: Integrated UPI, Card, Net Banking, and QR payment support.
-- 📊 **Super Admin Financial Ledger**: Real-time sales, takeaway parcel fees, and platform commission breakdown with 100% mathematical reconciliation.
-- 📥 **Multi-Sheet Excel Audit Reports**: Export detailed period summaries and token-level dish records (`.xlsx`).
+- 📊 **Super Admin Financial Ledger & Restaurant-Wise Sales**: Real-time breakdown of Gross Sales, individual Stall Net Sales (items + parcel fees only), takeaway fees, and platform/convenience commissions with 100% mathematical reconciliation.
+- 📥 **4-Sheet Excel Audit Reports (.xlsx)**: Export comprehensive workbooks with Financial Summary, Restaurant-wise Sales, Order Details (with Out of Stock & Refunded items color-coded in light red), and a dedicated Platform & Convenience Fees ledger with automated totals.
 - 🔄 **Partial Order Hold Resolution**: Interactive customer decision modals (Refund vs. Substitute) when items run out in the kitchen.
 
 ---
