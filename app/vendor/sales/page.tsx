@@ -464,7 +464,7 @@ export default function VendorSalesReportPage() {
 
             <button
               onClick={handleExportVendorExcel}
-              className="btn-primary py-1.5 px-3.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-transform self-start sm:self-auto"
+              className="bg-marigold hover:bg-marigold-hover py-1.5 px-3.5 rounded text-xs font-bold text-white flex items-center gap-1.5 active:scale-95 transition-transform self-start sm:self-auto"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export Sales Report (.xlsx)</span>
