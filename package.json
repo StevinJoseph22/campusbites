@@ -44,9 +44,6 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   },
-  "prisma": {
-    "seed": "npx ts-node --compiler-options {\"\"module\"\":\"\"commonjs\"\"} prisma/seed.ts"
-  },
   "overrides": {
     "deepmerge-ts": "^8.0.2",
     "mysql2": "^3.24.3",
