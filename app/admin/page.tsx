@@ -640,7 +640,7 @@ export default function SuperAdminPage() {
       applyHeaderStyle(detailsSheet.getRow(1), "FF1E293B");
 
       filteredOrders.forEach(order => {
-        const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN") : order.placedAt;
+        const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : order.placedAt;
         const customerStr = order.studentRegNumber || order.studentName || order.email || "Student";
         const isOrderRefunded = order.paymentStatus === "REFUNDED";
 
@@ -716,7 +716,7 @@ export default function SuperAdminPage() {
       let sumGrandTotal = 0;
 
       filteredOrders.forEach(order => {
-        const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN") : order.placedAt;
+        const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : order.placedAt;
         const customerStr = order.studentRegNumber || order.studentName || order.email || "Student";
         
         const foodSub = (order.vendorPortions || []).reduce((pSum: number, portion: any) => {

@@ -47,7 +47,8 @@ export function generateThermalSlipHtml(data: ThermalSlipData): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: true
+    hour12: true,
+    timeZone: "Asia/Kolkata"
   });
 
   return `<!DOCTYPE html>
@@ -400,7 +401,7 @@ export function generateEscPosCommands(data: ThermalSlipData): Uint8Array {
 
   // Alignment Left
   chunks.push(0x1B, 0x61, 0x00); // ESC a 0 (Left)
-  const printTimestamp = data.placedAt || new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  const printTimestamp = data.placedAt || new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
   chunks.push(...encoder.encode(`TIME : ${printTimestamp}\n`));
   if (data.pickupTimeSlot) chunks.push(...encoder.encode(`SLOT : ${data.pickupTimeSlot}\n`));
   if (data.studentName) chunks.push(...encoder.encode(`STUD : ${data.studentName} (${data.studentRegNumber || ""})\n`));

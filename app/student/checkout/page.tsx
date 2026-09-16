@@ -345,7 +345,7 @@ export default function CheckoutPage() {
       const newOrder = {
         orderId,
         masterToken: `KJU-MASTER-${Math.floor(1000 + Math.random() * 9000)}`,
-        placedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        placedAt: new Date().toLocaleTimeString("en-IN", { hour: '2-digit', minute: '2-digit', timeZone: "Asia/Kolkata" }),
         placedTimestamp: Date.now(),
         paymentMethod: `Cashfree (Order ID: ${cashfreeOrderId})`,
         paymentStatus: "PAID",

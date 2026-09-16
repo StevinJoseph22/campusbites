@@ -261,7 +261,7 @@ export async function GET(req: Request) {
       status: o.status,
       studentName: o.order?.studentName || null,
       studentRegNumber: o.order?.studentRegNumber || null,
-      placedAt: new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      placedAt: new Date(o.createdAt).toLocaleTimeString("en-IN", { hour: '2-digit', minute: '2-digit', timeZone: "Asia/Kolkata" }),
       timestamp: new Date(o.createdAt).getTime()
     }));
 

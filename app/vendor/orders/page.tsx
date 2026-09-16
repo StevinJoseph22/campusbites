@@ -156,7 +156,8 @@ export default function VendorOrdersPage() {
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true
+      hour12: true,
+      timeZone: "Asia/Kolkata"
     }),
     pickupTimeSlot: order.pickupTimeSlot,
     studentName: order.studentName,
@@ -224,7 +225,8 @@ export default function VendorOrdersPage() {
                   month: "short",
                   hour: "2-digit",
                   minute: "2-digit",
-                  hour12: true
+                  hour12: true,
+                  timeZone: "Asia/Kolkata"
                 }),
                 pickupTimeSlot: portion.pickupTimeSlot,
                 studentName: incoming.studentName,
