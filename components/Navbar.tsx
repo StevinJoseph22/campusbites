@@ -117,7 +117,7 @@ export function Navbar({
                 CampusBites
               </span>
               <p className="hidden sm:block text-[9px] text-ink-soft font-semibold tracking-wider uppercase">
-                Student Canteen Hub
+                Campus Canteen Hub
               </p>
             </div>
           </Link>
@@ -186,11 +186,11 @@ export function Navbar({
           ) : (
             <Link
               href="/login"
-              aria-label="Student sign in"
+              aria-label="Sign in"
               className="bg-marigold hover:bg-marigold-hover w-9 h-9 sm:w-auto sm:px-3.5 sm:py-2 rounded text-xs font-bold text-white flex items-center justify-center sm:gap-1.5 transition-colors"
             >
               <User className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline-block">Student Sign In</span>
+              <span className="hidden sm:inline-block">Sign In</span>
             </Link>
           )}
         </div>

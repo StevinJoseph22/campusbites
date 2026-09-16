@@ -99,11 +99,11 @@ export function DigitalReceiptModal({
         {(studentName || studentRegNumber) && (
           <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
             <div>
-              <span className="text-[10px] text-slate-400 font-bold block">Student</span>
+              <span className="text-[10px] text-slate-400 font-bold block">Customer</span>
               <p className="font-bold text-white">{studentName || "—"}</p>
             </div>
             <div className="text-right">
-              <span className="text-[10px] text-slate-400 font-bold block">Roll Number</span>
+              <span className="text-[10px] text-slate-400 font-bold block">ID Number</span>
               <p className="font-mono font-bold text-orange-400">{studentRegNumber || "—"}</p>
             </div>
           </div>

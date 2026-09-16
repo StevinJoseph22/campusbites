@@ -811,13 +811,13 @@ export default function SuperAdminPage() {
             className="glass-panel p-5 rounded-3xl border-slate-800 space-y-2 text-left hover:border-purple-500/40 transition-all hover:bg-purple-950/5 group w-full shadow-md cursor-pointer"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider group-hover:text-purple-400 transition-colors">Registered Students</span>
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider group-hover:text-purple-400 transition-colors">Registered Users</span>
               <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:scale-105 transition-transform">
                 <Users className="w-4 h-4" />
               </div>
             </div>
             <div className="space-y-0.5">
-              <p className="text-2xl font-black text-purple-400">{studentCount} Students</p>
+              <p className="text-2xl font-black text-purple-400">{studentCount} Users</p>
               <p className="text-[11px] text-slate-400 group-hover:text-slate-300 font-semibold transition-colors">Click to view all register numbers 📋</p>
             </div>
           </button>

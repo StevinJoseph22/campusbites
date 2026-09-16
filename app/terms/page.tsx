@@ -21,7 +21,7 @@ export default function TermsPage() {
           <section className="space-y-2">
             <h2 className="font-display text-base font-semibold">1. About CampusBites</h2>
             <p className="text-ink-soft">
-              CampusBites is a pre-order system that lets students at Kristu Jayanti University browse menus from campus canteen stalls, place a combined order across multiple vendors, pay online, and collect their food using a token number at the pickup counter. CampusBites is a technology platform connecting students with independent canteen vendors operating on campus — each vendor is responsible for preparing and fulfilling their own portion of an order.
+              CampusBites is a pre-order system that lets students, faculty, and staff at Kristu Jayanti University browse menus from campus canteen stalls, place a combined order across multiple vendors, pay online, and collect their food using a token number at the pickup counter. CampusBites is a technology platform connecting the campus community with independent canteen vendors operating on campus — each vendor is responsible for preparing and fulfilling their own portion of an order.
             </p>
           </section>
 

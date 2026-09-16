@@ -131,7 +131,7 @@ export default function VendorDashboardPage() {
                 <AlertTriangle className="w-4 h-4 text-chili" />
                 <span className="text-sm font-bold text-chili">{outOfStockItems.length} item(s) out of stock</span>
               </div>
-              <p className="text-[11px] text-ink-soft">Students can't order these until restocked</p>
+              <p className="text-[11px] text-ink-soft">Customers can't order these until restocked</p>
             </div>
 
             <div className="flex flex-wrap gap-2">
