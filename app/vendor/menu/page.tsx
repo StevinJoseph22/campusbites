@@ -23,6 +23,7 @@ export interface MenuItem {
   availableFrom?: string;
   offerType?: string;
   offerValue?: number;
+  isDineInOnly?: boolean;
   variants?: string | null;
 }
 
@@ -39,13 +40,16 @@ import {
   CheckCircle2,
   Download,
   Upload,
-  Package
+  Package,
+  UtensilsCrossed
 } from "lucide-react";
 import { ImageDropzone } from "@/components/ImageDropzone";
+import { VendorMenuSkeleton } from "@/components/Skeletons";
 
 export default function VendorMenuPage() {
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -61,6 +65,7 @@ export default function VendorMenuPage() {
   const [stockType, setStockType] = useState<"COUNTED" | "UNLIMITED">("COUNTED");
   const [itemImage, setItemImage] = useState("https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=300&h=200&fit=crop");
   const [isVeg, setIsVeg] = useState(true);
+  const [isDineInOnly, setIsDineInOnly] = useState(false);
   const [itemAvailableFrom, setItemAvailableFrom] = useState("10:00 AM");
   const [itemOfferType, setItemOfferType] = useState("NONE");
   const [itemOfferValue, setItemOfferValue] = useState("0");
@@ -75,11 +80,10 @@ export default function VendorMenuPage() {
   const [bulkImportLoading, setBulkImportLoading] = useState(false);
 
   const downloadTemplate = () => {
-    const csvContent = "data:text/csv;charset=utf-8,Name,Description,Price,Category,PrepTime,TakeawayCharge,StockCount,StockType,IsVeg,AvailableFrom\n"
-      + "Double Cheese Chicken Burger,Premium cheese chicken burger,149,Mains,10,10,50,COUNTED,false,10:00 AM\n"
-      + "Paneer Tikka Roll,Grilled paneer stuffed roll,120,Rolls,8,5,999,UNLIMITED,true,10:00 AM\n"
-      + "Chicken Biryani,Spicy lunch special chicken biryani,180,Mains,15,10,100,COUNTED,false,12:00 PM\n"
-      + "Peri Peri Loaded Fries,Golden fries with seasoning,110,Sides,6,5,100,COUNTED,true,10:00 AM\n";
+    const csvContent = "data:text/csv;charset=utf-8,Name,Description,Price,Category,PrepTime,TakeawayCharge,StockCount,StockType,IsVeg,AvailableFrom,IsDineInOnly\n"
+      + "Double Cheese Chicken Burger,Premium cheese chicken burger,149,Mains,10,10,50,COUNTED,false,10:00 AM,false\n"
+      + "Sizzler Special Platter,Hot sizzler dish strictly dine-in,220,Mains,15,0,25,COUNTED,true,12:00 PM,true\n"
+      + "Chicken Biryani,Spicy lunch special chicken biryani,180,Mains,15,10,100,COUNTED,false,12:00 PM,false\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -121,7 +125,8 @@ export default function VendorMenuPage() {
           stockCount: Number(values[6]) || 50,
           stockType: (values[7] || "COUNTED").toUpperCase() === "UNLIMITED" ? "UNLIMITED" : "COUNTED",
           isVeg: (values[8] || "true").toLowerCase() === "true",
-          availableFrom: values[9] || "10:00 AM"
+          availableFrom: values[9] || "10:00 AM",
+          isDineInOnly: (values[10] || "false").toLowerCase() === "true"
         };
         itemsList.push(itemObj);
       }
@@ -233,7 +238,8 @@ export default function VendorMenuPage() {
       }
 
       setActiveVendor(currentVendor);
-      fetchMenuFromDatabase(currentVendor.id);
+      await fetchMenuFromDatabase(currentVendor.id);
+      setLoading(false);
     };
 
     loadVendorDetailsAndMenu();
@@ -257,7 +263,8 @@ export default function VendorMenuPage() {
           prepTime: Number(itemPrepTime),
           image: itemImage.trim(),
           isVeg,
-          takeawayCharge: Number(itemTakeawayCharge) || 10,
+          isDineInOnly,
+          takeawayCharge: isDineInOnly ? 0 : (Number(itemTakeawayCharge) || 10),
           stockCount: stockType === "COUNTED" ? Number(itemStockCount) : 999,
           stockType,
           available: true,
@@ -274,6 +281,7 @@ export default function VendorMenuPage() {
         setItemName("");
         setItemPrice("");
         setItemDesc("");
+        setIsDineInOnly(false);
         setItemAvailableFrom("10:00 AM");
         setItemOfferType("NONE");
         setItemOfferValue("0");
@@ -311,7 +319,8 @@ export default function VendorMenuPage() {
           prepTime: Number(editingItem.prepTime),
           image: editingItem.image,
           isVeg: editingItem.isVeg,
-          takeawayCharge: Number(editingItem.takeawayCharge),
+          isDineInOnly: Boolean(editingItem.isDineInOnly),
+          takeawayCharge: editingItem.isDineInOnly ? 0 : Number(editingItem.takeawayCharge),
           stockCount: Number(editingItem.stockCount),
           stockType: editingItem.stockType,
           available: editingItem.available,
@@ -434,8 +443,6 @@ export default function VendorMenuPage() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  if (!activeVendor) return null;
-
   const filtered = menuItems.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
@@ -502,109 +509,139 @@ export default function VendorMenuPage() {
           />
         </div>
 
-        {/* Menu Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((item) => (
-            <div key={item.id} className="card-surface p-4 flex flex-col justify-between space-y-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => toggleVegStatus(item.id, item.isVeg)}
-                    title="Click to toggle Veg / Non-Veg"
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-colors ${
-                      item.isVeg ? "bg-sage-soft text-sage border-sage/30 hover:bg-sage/20" : "bg-chili-soft text-chili border-chili/30 hover:bg-chili/20"
-                    }`}
-                  >
-                    {item.isVeg ? "VEG" : "NON-VEG"}
-                  </button>
-                  <div className="flex items-center gap-1.5 font-mono">
-                    {item.offerType && item.offerType !== "NONE" && item.offerValue && item.offerValue > 0 ? (
-                      <>
-                        <span className="text-[10px] text-ink-soft line-through">₹{item.price}</span>
-                        <span className="text-sm font-bold text-marigold">
-                          ₹{(item.offerType === "PERCENTAGE"
-                            ? Math.max(0, item.price - (item.price * item.offerValue / 100))
-                            : Math.max(0, item.price - item.offerValue)
-                          ).toFixed(2)}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-sm font-bold text-marigold">₹{item.price}</span>
+        {/* Dynamic Content: Loading Skeleton vs Empty State vs Menu Grid */}
+        {loading || !activeVendor ? (
+          <VendorMenuSkeleton />
+        ) : filtered.length === 0 ? (
+          <div className="card-surface p-12 text-center space-y-4 border border-ink/10">
+            <Package className="w-12 h-12 text-ink-soft/40 mx-auto" />
+            <div className="space-y-1">
+              <h3 className="font-display text-base font-bold text-ink">No dishes found</h3>
+              <p className="text-xs text-ink-soft max-w-sm mx-auto">
+                {searchQuery ? `No menu dishes match "${searchQuery}". Try clearing the search.` : "Your canteen stall does not have any dishes in the menu yet."}
+              </p>
+            </div>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-marigold hover:bg-marigold-hover px-4 py-2 rounded text-white font-bold text-xs inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Your First Dish</span>
+            </button>
+          </div>
+        ) : (
+          /* Menu Grid */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((item) => (
+              <div key={item.id} className="card-surface p-4 flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => toggleVegStatus(item.id, item.isVeg)}
+                      title="Click to toggle Veg / Non-Veg"
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-colors ${
+                        item.isVeg ? "bg-sage-soft text-sage border-sage/30 hover:bg-sage/20" : "bg-chili-soft text-chili border-chili/30 hover:bg-chili/20"
+                      }`}
+                    >
+                      {item.isVeg ? "VEG" : "NON-VEG"}
+                    </button>
+
+                    {item.isDineInOnly && (
+                      <span className="px-2 py-0.5 rounded bg-marigold/10 border border-marigold/30 text-marigold text-[9px] font-bold flex items-center gap-1">
+                        🍽️ Dine-In Only
+                      </span>
+                    )}
+
+                    <div className="flex items-center gap-1.5 font-mono">
+                      {item.offerType && item.offerType !== "NONE" && item.offerValue && item.offerValue > 0 ? (
+                        <>
+                          <span className="text-[10px] text-ink-soft line-through">₹{item.price}</span>
+                          <span className="text-sm font-bold text-marigold">
+                            ₹{(item.offerType === "PERCENTAGE"
+                              ? Math.max(0, item.price - (item.price * item.offerValue / 100))
+                              : Math.max(0, item.price - item.offerValue)
+                            ).toFixed(2)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-bold text-marigold">₹{item.price}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 className="text-sm font-bold text-ink">{item.name}</h3>
+                  <p className="text-xs text-ink-soft line-clamp-2">{item.description}</p>
+
+                  <div className="pt-2 border-t border-ink/10 text-xs space-y-2">
+                    <div className="flex justify-between items-center text-ink-soft">
+                      <span>Stock Type</span>
+                      <span className="font-semibold text-ink">{item.stockType}</span>
+                    </div>
+
+                    {item.stockType === "COUNTED" && (
+                      <div className="flex justify-between items-center text-ink-soft">
+                        <span>Daily Stock</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => updateStockQuickly(item.id, Math.max(0, item.stockCount - 5))}
+                            className="w-6 h-6 rounded bg-cardstock border border-ink/15 flex items-center justify-center font-bold hover:bg-cardstock-hover text-[10px]"
+                          >
+                            -5
+                          </button>
+                          <span className="font-bold text-ink font-mono">{item.stockCount}</span>
+                          <button
+                            onClick={() => updateStockQuickly(item.id, item.stockCount + 5)}
+                            className="w-6 h-6 rounded bg-cardstock border border-ink/15 flex items-center justify-center font-bold hover:bg-cardstock-hover text-[10px]"
+                          >
+                            +5
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                <h3 className="text-sm font-bold text-ink">{item.name}</h3>
-                <p className="text-xs text-ink-soft line-clamp-2">{item.description}</p>
+                <div className="pt-3 border-t border-ink/10 flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => toggleAvailability(item.id, item.available)}
+                    className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${
+                      item.available ? "bg-sage-soft border-sage/30 text-sage" : "bg-chili-soft border-chili/30 text-chili"
+                    }`}
+                  >
+                    {item.available ? "Available" : "Out of Stock"}
+                  </button>
 
-                <div className="pt-2 border-t border-ink/10 text-xs space-y-2">
-                  <div className="flex justify-between items-center text-ink-soft">
-                    <span>Stock Type</span>
-                    <span className="font-semibold text-ink">{item.stockType}</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        setEditingItem({
+                          ...item,
+                          description: item.description || "",
+                          takeawayCharge: item.takeawayCharge ?? 10,
+                          offerType: item.offerType || "NONE",
+                          offerValue: item.offerValue ?? 0,
+                          isDineInOnly: item.isDineInOnly ?? false,
+                          isBestseller: item.isBestseller ?? false
+                        });
+                        setIsEditModalOpen(true);
+                      }}
+                      className="p-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-ink"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      className="p-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-chili"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-
-                  {item.stockType === "COUNTED" && (
-                    <div className="flex justify-between items-center text-ink-soft">
-                      <span>Daily Stock</span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => updateStockQuickly(item.id, Math.max(0, item.stockCount - 5))}
-                          className="w-6 h-6 rounded bg-cardstock border border-ink/15 flex items-center justify-center font-bold hover:bg-cardstock-hover text-[10px]"
-                        >
-                          -5
-                        </button>
-                        <span className="font-bold text-ink font-mono">{item.stockCount}</span>
-                        <button
-                          onClick={() => updateStockQuickly(item.id, item.stockCount + 5)}
-                          className="w-6 h-6 rounded bg-cardstock border border-ink/15 flex items-center justify-center font-bold hover:bg-cardstock-hover text-[10px]"
-                        >
-                          +5
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
-
-              <div className="pt-3 border-t border-ink/10 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => toggleAvailability(item.id, item.available)}
-                  className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${
-                    item.available ? "bg-sage-soft border-sage/30 text-sage" : "bg-chili-soft border-chili/30 text-chili"
-                  }`}
-                >
-                  {item.available ? "Available" : "Out of Stock"}
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      setEditingItem({
-                        ...item,
-                        description: item.description || "",
-                        takeawayCharge: item.takeawayCharge ?? 10,
-                        offerType: item.offerType || "NONE",
-                        offerValue: item.offerValue ?? 0,
-                        isBestseller: item.isBestseller ?? false
-                      });
-                      setIsEditModalOpen(true);
-                    }}
-                    className="p-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-ink"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => deleteItem(item.id)}
-                    className="p-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-chili"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </main>
 
       {/* ADD DISH MODAL */}
@@ -691,9 +728,22 @@ export default function VendorMenuPage() {
                   id="addIsVeg"
                   checked={isVeg}
                   onChange={(e) => setIsVeg(e.target.checked)}
-                  className="w-4 h-4 rounded border-ink/20"
+                  className="w-4 h-4 rounded border-ink/20 cursor-pointer"
                 />
-                <label htmlFor="addIsVeg" className="font-bold text-ink-soft">Pure Veg</label>
+                <label htmlFor="addIsVeg" className="font-bold text-ink-soft cursor-pointer">Pure Veg</label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="addIsDineInOnly"
+                  checked={isDineInOnly}
+                  onChange={(e) => setIsDineInOnly(e.target.checked)}
+                  className="w-4 h-4 rounded border-ink/20 cursor-pointer"
+                />
+                <label htmlFor="addIsDineInOnly" className="font-bold text-ink cursor-pointer flex items-center gap-1.5">
+                  <span>🍽️ Dine-In Only (No Parcel / Takeaway)</span>
+                </label>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -851,9 +901,22 @@ export default function VendorMenuPage() {
                   id="editIsVeg"
                   checked={Boolean(editingItem.isVeg)}
                   onChange={(e) => setEditingItem({ ...editingItem, isVeg: e.target.checked })}
-                  className="w-4 h-4 rounded border-ink/20"
+                  className="w-4 h-4 rounded border-ink/20 cursor-pointer"
                 />
-                <label htmlFor="editIsVeg" className="font-bold text-ink-soft">Pure Veg</label>
+                <label htmlFor="editIsVeg" className="font-bold text-ink-soft cursor-pointer">Pure Veg</label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="editIsDineInOnly"
+                  checked={Boolean(editingItem.isDineInOnly)}
+                  onChange={(e) => setEditingItem({ ...editingItem, isDineInOnly: e.target.checked })}
+                  className="w-4 h-4 rounded border-ink/20 cursor-pointer"
+                />
+                <label htmlFor="editIsDineInOnly" className="font-bold text-ink cursor-pointer flex items-center gap-1.5">
+                  <span>🍽️ Dine-In Only (No Parcel / Takeaway)</span>
+                </label>
               </div>
 
               <div className="flex items-center gap-2">

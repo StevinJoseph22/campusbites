@@ -12,6 +12,7 @@ import { getStoredRestaurants, RestaurantAccount } from "@/lib/restaurants-data"
 import { PageLoader } from "@/components/PageLoader";
 import { Footer } from "@/components/Footer";
 import { getSocket } from "@/lib/socket-client";
+import { StudentDashboardSkeleton } from "@/components/Skeletons";
 import { 
   Search,
   Clock,
@@ -39,6 +40,7 @@ export default function StudentDashboardPage() {
   const { totalCount, totalAmount, addToCart, removeFromCart, clearCart, cartItems } = useCart();
   const [restaurants, setRestaurants] = useState<RestaurantAccount[]>([]);
   const [discountItems, setDiscountItems] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [floorFilter, setFloorFilter] = useState<string>("ALL");
   const [selectedCampus, setSelectedCampus] = useState("Airport Road Campus");
@@ -77,6 +79,8 @@ export default function StudentDashboardPage() {
       }
     } catch (e) {
       setRestaurants(getStoredRestaurants());
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -109,40 +113,27 @@ export default function StudentDashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const loadDiscountItems = async () => {
-      if (restaurants.length === 0) return;
-      
-      const activeCampusRestaurants = restaurants.filter(
-        r => (r.campus || "Airport Road Campus") === selectedCampus
-      );
+  const [campusDishes, setCampusDishes] = useState<any[]>([]);
 
-      const allDiscounts: any[] = [];
-      for (const r of activeCampusRestaurants) {
-        try {
-          const res = await fetch(`/api/menu?restaurantId=${r.id}`);
-          const data = await res.json();
-          if (data.success && data.items) {
-            const promoItems = data.items.filter((item: any) => 
-              item.offerType && item.offerType !== "NONE" && item.offerValue && item.offerValue > 0
-            ).map((item: any) => ({
-              ...item,
-              stallId: r.id,
-              stallName: r.name,
-              stallInitials: r.tokenPrefix.replace("KJU-", ""),
-              campus: r.campus
-            }));
-            allDiscounts.push(...promoItems);
-          }
-        } catch (e) {
-          console.error("Error loading promo items for stall " + r.id, e);
+  useEffect(() => {
+    const loadCampusMenuAndDiscounts = async () => {
+      try {
+        const res = await fetch(`/api/menu?campus=${encodeURIComponent(selectedCampus)}&all=true&t=${Date.now()}`);
+        const data = await res.json();
+        if (data.success && data.items) {
+          setCampusDishes(data.items);
+          const promoItems = data.items.filter((item: any) => 
+            item.offerType && item.offerType !== "NONE" && item.offerValue && item.offerValue > 0
+          );
+          setDiscountItems(promoItems);
         }
+      } catch (e) {
+        console.error("Error loading campus menu:", e);
       }
-      setDiscountItems(allDiscounts);
     };
 
-    loadDiscountItems();
-  }, [restaurants, selectedCampus]);
+    loadCampusMenuAndDiscounts();
+  }, [selectedCampus]);
 
   const handleReorder = async (order: any) => {
     // 1. Clear cart
@@ -173,12 +164,34 @@ export default function StudentDashboardPage() {
     router.push("/student/cart");
   };
 
-  let filtered = restaurants.filter(r => 
-    ((r.campus || "Central Campus") === selectedCampus) && (
-      r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.cuisine.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  );
+  const normQuery = searchQuery.trim().toLowerCase();
+
+  // Find stall IDs that have dishes matching the search query
+  const matchingDishesByStall = new Map<string, string[]>();
+  if (normQuery) {
+    campusDishes.forEach(d => {
+      if (
+        d.name.toLowerCase().includes(normQuery) ||
+        (d.description && d.description.toLowerCase().includes(normQuery)) ||
+        (d.category && d.category.toLowerCase().includes(normQuery))
+      ) {
+        const existing = matchingDishesByStall.get(d.stallId) || [];
+        if (!existing.includes(d.name)) existing.push(d.name);
+        matchingDishesByStall.set(d.stallId, existing);
+      }
+    });
+  }
+
+  let filtered = restaurants.filter(r => {
+    const matchesCampus = (r.campus || "Airport Road Campus") === selectedCampus;
+    if (!matchesCampus) return false;
+    if (!normQuery) return true;
+
+    const matchesName = r.name.toLowerCase().includes(normQuery);
+    const matchesCuisine = r.cuisine.toLowerCase().includes(normQuery);
+    const matchesDishes = matchingDishesByStall.has(r.id);
+    return matchesName || matchesCuisine || matchesDishes;
+  });
 
   if (floorFilter !== "ALL") {
     filtered = filtered.filter(r => r.floor === floorFilter);
@@ -186,7 +199,7 @@ export default function StudentDashboardPage() {
 
   const FLOOR_ORDER = ["Ground Floor", "1st Floor", "2nd Floor", "3rd Floor"];
   const availableFloors = FLOOR_ORDER.filter(floor =>
-    restaurants.some(r => (r.campus || "Central Campus") === selectedCampus && r.floor === floor)
+    restaurants.some(r => (r.campus || "Airport Road Campus") === selectedCampus && r.floor === floor)
   );
 
   return (
@@ -201,7 +214,11 @@ export default function StudentDashboardPage() {
       />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 lg:px-8 py-6 space-y-8">
-        {/* Banner */}
+        {isLoading && restaurants.length === 0 ? (
+          <StudentDashboardSkeleton />
+        ) : (
+          <>
+            {/* Banner */}
         <div className="card-surface relative overflow-hidden border-l-4 border-l-marigold">
           <div className="p-6 sm:p-8 space-y-3">
             <div key={selectedCampus} className="inline-flex items-center gap-2 px-3 py-1 rounded bg-marigold/10 border border-marigold/30 text-marigold text-xs font-bold animate-reveal-up">
@@ -459,6 +476,14 @@ export default function StudentDashboardPage() {
 
                         <h3 className="font-display text-sm font-bold text-ink group-hover:text-marigold transition-colors truncate">{stall.name}</h3>
                         <p className="text-xs text-ink-soft truncate">{stall.cuisine}</p>
+
+                        {matchingDishesByStall.get(stall.id) && (
+                          <p className="text-[10px] text-marigold font-bold truncate flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-marigold shrink-0" />
+                            <span>Serves: {matchingDishesByStall.get(stall.id)?.slice(0, 3).join(", ")}</span>
+                          </p>
+                        )}
+
                         <p className="text-[10px] text-ink-soft flex items-center gap-1 truncate">
                           {stall.location}
                         </p>
@@ -559,6 +584,8 @@ export default function StudentDashboardPage() {
               </div>
             )}
           </div>
+        )}
+          </>
         )}
       </main>
 

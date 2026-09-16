@@ -18,23 +18,38 @@ import {
   XCircle,
   Check,
   AlertTriangle,
-  Printer
+  Printer,
+  Sliders
 } from "lucide-react";
 import { ThermalReceiptModal } from "@/components/ThermalReceiptModal";
-import { printThermalSlip, ThermalSlipData } from "@/lib/thermal-printer";
+import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
+import { hardwarePrinter, ThermalSlipData } from "@/lib/hardware-printer";
+import { VendorOrdersSkeleton } from "@/components/Skeletons";
 
 export default function VendorOrdersPage() {
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount | null>(null);
   const [orders, setOrders] = useState<VendorOrderRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"ACTIVE" | "ARCHIVED">("ACTIVE");
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<VendorOrderRecord | null>(null);
   const [selectedThermalOrder, setSelectedThermalOrder] = useState<ThermalSlipData | null>(null);
+  const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [autoPrintKOT, setAutoPrintKOT] = useState<boolean>(true);
   const [autoPrintCancelled, setAutoPrintCancelled] = useState<boolean>(true);
+  const [printerConnected, setPrinterConnected] = useState(false);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [acknowledgedItems, setAcknowledgedItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    const unsub = hardwarePrinter.subscribe(() => {
+      setPrinterConnected(hardwarePrinter.getStatus().isConnected);
+    });
+    setPrinterConnected(hardwarePrinter.getStatus().isConnected);
+    hardwarePrinter.tryAutoReconnect();
+    return () => unsub();
+  }, []);
 
   const fetchOrdersFromDatabase = async (restaurantId: string) => {
     try {
@@ -105,8 +120,11 @@ export default function VendorOrdersPage() {
 
       activeRestId = currentVendor.id;
       setActiveVendor(currentVendor);
-      fetchOrdersFromDatabase(currentVendor.id);
-      fetchMenuFromDatabase(currentVendor.id);
+      await Promise.all([
+        fetchOrdersFromDatabase(currentVendor.id),
+        fetchMenuFromDatabase(currentVendor.id)
+      ]);
+      setLoading(false);
     };
 
     loadVendorDetailsAndOrders();
@@ -213,9 +231,9 @@ export default function VendorOrdersPage() {
             setToastMessage(`New order — Token ${portion.tokenNumber}`);
             setTimeout(() => setToastMessage(null), 5000);
 
-            // AUTO-PRINT KITCHEN SLIP (KOT) on Essae PR-55
+            // AUTO-PRINT KITCHEN SLIP (KOT) directly to hardware printer in background (0 clicks)
             if (autoPrintKOT) {
-              printThermalSlip({
+              hardwarePrinter.printSlip({
                 tokenNumber: portion.tokenNumber,
                 orderId: incoming.orderId,
                 stallName: activeVendor.name,
@@ -248,11 +266,11 @@ export default function VendorOrdersPage() {
     const handleStatusUpdate = (data: { tokenNumber: string; status: string }) => {
       fetchOrdersFromDatabase(activeVendor.id);
       
-      // AUTO-PRINT CANCELLATION SLIP on Essae PR-55 when order cancelled/refunded
+      // AUTO-PRINT CANCELLATION SLIP on hardware printer when order cancelled/refunded
       if (data.status === "REFUNDED" && autoPrintCancelled) {
         const target = orders.find(o => o.tokenNumber === data.tokenNumber);
         if (target) {
-          printThermalSlip(createSlipData(target, true, "Cancelled by student / Out of stock"));
+          hardwarePrinter.printSlip(createSlipData(target, true, "Cancelled by student / Out of stock"));
         }
       }
     };
@@ -291,14 +309,14 @@ export default function VendorOrdersPage() {
       status: newStatus
     });
 
-    // TRIGGER THERMAL PRINTER
+    // TRIGGER HARDWARE THERMAL PRINTER (0-click silent execution)
     if (newStatus === "CONFIRMED" && targetOrder) {
       if (autoPrintKOT) {
-        printThermalSlip(createSlipData(targetOrder, false));
+        hardwarePrinter.printSlip(createSlipData(targetOrder, false));
       }
     } else if (newStatus === "REFUNDED" && targetOrder) {
       if (autoPrintCancelled) {
-        printThermalSlip(createSlipData(targetOrder, true, "Rejected / Out of Stock by Kitchen"));
+        hardwarePrinter.printSlip(createSlipData(targetOrder, true, "Rejected / Out of Stock by Kitchen"));
       }
     }
 
@@ -394,36 +412,57 @@ export default function VendorOrdersPage() {
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Out of stock alert */}
-        {outOfStockItems.length > 0 && (
-          <div className="card-surface p-4 border-chili/30 space-y-2.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-chili" />
-                <span className="text-sm font-bold text-chili">{outOfStockItems.length} item(s) out of stock</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {outOfStockItems.map((item) => (
-                <div key={item.id} className="flex items-center gap-2 bg-chili-soft px-3 py-1.5 rounded text-xs">
-                  <span className="font-bold text-chili">{item.name}</span>
-                  <button onClick={() => setAcknowledgedItems(prev => [...prev, item.id])} className="text-chili/80 hover:text-chili font-bold underline">
-                    Acknowledge
-                  </button>
+        {loading || !activeVendor ? (
+          <VendorOrdersSkeleton />
+        ) : (
+          <>
+            {/* Out of stock alert */}
+            {outOfStockItems.length > 0 && (
+              <div className="card-surface p-4 border-chili/30 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-chili" />
+                    <span className="text-sm font-bold text-chili">{outOfStockItems.length} item(s) out of stock</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+                <div className="flex flex-wrap gap-2">
+                  {outOfStockItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 bg-chili-soft px-3 py-1.5 rounded text-xs">
+                      <span className="font-bold text-chili">{item.name}</span>
+                      <button onClick={() => setAcknowledgedItems(prev => [...prev, item.id])} className="text-chili/80 hover:text-chili font-bold underline">
+                        Acknowledge
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">{activeVendor.name} — Orders</h1>
-            <p className="text-xs text-ink-soft">Live queue with Essae PR-55 thermal printer auto-dispatch</p>
-          </div>
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">{activeVendor.name} — Orders</h1>
+                <p className="text-xs text-ink-soft">Live queue with Essae PR-55 thermal printer auto-dispatch</p>
+              </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Direct Hardware Printer Pairing Button */}
+            <button
+              onClick={() => setIsPrinterSettingsOpen(true)}
+              className={`px-3 py-2 rounded border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                printerConnected
+                  ? "bg-sage-soft border-sage/40 text-sage hover:bg-sage hover:text-white"
+                  : "bg-cardstock border-ink/15 text-ink-soft hover:text-ink hover:border-marigold"
+              }`}
+              title="Configure USB (WebSerial) / Bluetooth thermal receipt printer for 0-click silent printing"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${printerConnected ? "bg-sage animate-pulse" : "bg-ink-soft/40"}`} />
+                {printerConnected ? "Printer: Ready" : "Pair Printer"}
+              </span>
+            </button>
+
             {/* Auto-print toggles */}
             <div className="flex items-center gap-1.5 bg-cardstock p-1 rounded border border-ink/15 text-xs font-bold">
               <button
@@ -435,7 +474,7 @@ export default function VendorOrdersPage() {
                 title="Automatically print Kitchen Order Tickets (KOT) when order arrives or is confirmed"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>Auto-Print KOT: {autoPrintKOT ? "ON" : "OFF"}</span>
+                <span>Auto KOT: {autoPrintKOT ? "ON" : "OFF"}</span>
               </button>
               <button
                 type="button"
@@ -446,7 +485,7 @@ export default function VendorOrdersPage() {
                 title="Automatically print cancellation slips when user cancels or order is out of stock"
               >
                 <XCircle className="w-3.5 h-3.5" />
-                <span>Auto-Print Cancel: {autoPrintCancelled ? "ON" : "OFF"}</span>
+                <span>Auto Cancel: {autoPrintCancelled ? "ON" : "OFF"}</span>
               </button>
             </div>
 
@@ -703,6 +742,8 @@ export default function VendorOrdersPage() {
             ))}
           </div>
         )}
+          </>
+        )}
       </main>
 
       {/* DIGITAL RECEIPT MODAL */}
@@ -733,6 +774,12 @@ export default function VendorOrdersPage() {
           onClose={() => setSelectedThermalOrder(null)}
         />
       )}
+
+      {/* HARDWARE PRINTER PAIRING & SETTINGS MODAL */}
+      <PrinterSettingsModal
+        isOpen={isPrinterSettingsOpen}
+        onClose={() => setIsPrinterSettingsOpen(false)}
+      />
     </div>
   );
 }

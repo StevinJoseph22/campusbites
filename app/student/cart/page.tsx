@@ -46,6 +46,8 @@ export default function StudentCartPage() {
     grandTotal,
     platformFeePercent,
     convenienceFeePercent,
+    hasDineInOnlyItems,
+    dineInOnlyItemNames,
     itemsByStall
   } = useCart();
   const stallGroupList = Object.values(itemsByStall);
@@ -65,6 +67,13 @@ export default function StudentCartPage() {
     );
   }
 
+  const handleSelectTakeaway = () => {
+    setOrderType("TAKEAWAY");
+    if (hasDineInOnlyItems) {
+      alert(`⚠️ Notice: "${dineInOnlyItemNames.join(", ")}" is strictly Dine-In only (No parcel available). You will need to remove it or switch to Dine-In before checkout.`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-paper text-ink flex flex-col pb-16">
       <Navbar 
@@ -82,7 +91,7 @@ export default function StudentCartPage() {
             <ArrowLeft className="w-4 h-4" /> Back to Dashboard
           </Link>
 
-          <button onClick={clearCart} className="text-xs text-chili hover:opacity-80 font-semibold flex items-center gap-1">
+          <button onClick={clearCart} className="text-xs text-chili hover:opacity-80 font-semibold flex items-center gap-1 cursor-pointer">
             <Trash2 className="w-3.5 h-3.5" /> Clear Cart
           </button>
         </div>
@@ -105,7 +114,7 @@ export default function StudentCartPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               onClick={() => setOrderType("DINE_IN")}
-              className={`relative p-4 rounded border text-left flex items-center gap-3 transition-all ${
+              className={`relative p-4 rounded border text-left flex items-center gap-3 transition-all cursor-pointer ${
                 orderType === "DINE_IN"
                   ? "bg-marigold/10 border-marigold text-ink"
                   : "bg-paper border-ink/15 text-ink-soft hover:text-ink"
@@ -124,8 +133,8 @@ export default function StudentCartPage() {
             </button>
 
             <button
-              onClick={() => setOrderType("TAKEAWAY")}
-              className={`relative p-4 rounded border text-left flex items-center gap-3 transition-all ${
+              onClick={handleSelectTakeaway}
+              className={`relative p-4 rounded border text-left flex items-center gap-3 transition-all cursor-pointer ${
                 orderType === "TAKEAWAY"
                   ? "bg-marigold/10 border-marigold text-ink"
                   : "bg-paper border-ink/15 text-ink-soft hover:text-ink"
@@ -143,6 +152,29 @@ export default function StudentCartPage() {
               </div>
             </button>
           </div>
+
+          {/* DINE-IN ONLY WARNING BANNER */}
+          {orderType === "TAKEAWAY" && hasDineInOnlyItems && (
+            <div className="p-4 rounded bg-chili-soft border border-chili/40 text-chili space-y-2 animate-in fade-in">
+              <div className="flex items-start gap-2">
+                <span className="text-base">⚠️</span>
+                <div>
+                  <p className="font-bold text-xs text-chili">
+                    Dine-In Only Item in Cart: {dineInOnlyItemNames.join(", ")}
+                  </p>
+                  <p className="text-[11px] text-ink-soft mt-0.5">
+                    This item is strictly for <strong>Dine-In only</strong> and cannot be packed for takeaway/parcel. Please switch back to Dine-In or remove this dish to continue.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOrderType("DINE_IN")}
+                className="px-3 py-1.5 rounded bg-marigold hover:bg-marigold-hover text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                Switch to Dine-In (Table Service)
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Grouped Stall Items */}
@@ -175,27 +207,48 @@ export default function StudentCartPage() {
 
               <div className="space-y-3">
                 {group.items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-4 bg-paper p-3 rounded border border-ink/15">
+                  <div
+                    key={item.id}
+                    className={`flex items-center justify-between gap-4 p-3 rounded border transition-all ${
+                      item.isDineInOnly && orderType === "TAKEAWAY"
+                        ? "bg-chili-soft/40 border-chili/40"
+                        : "bg-paper border-ink/15"
+                    }`}
+                  >
                     <div className="space-y-0.5">
-                      <h4 className="text-xs font-bold text-ink">{item.name}</h4>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-xs font-bold text-ink">{item.name}</h4>
+                        {item.isDineInOnly && (
+                          <span className="px-2 py-0.5 rounded bg-marigold/10 border border-marigold/30 text-marigold text-[9px] font-bold">
+                            🍽️ Dine-In Only
+                          </span>
+                        )}
+                      </div>
+
+                      {item.isDineInOnly && orderType === "TAKEAWAY" && (
+                        <p className="text-[10px] text-chili font-bold">
+                          ⚠️ This item cannot be packed for takeaway (Dine-in only)
+                        </p>
+                      )}
+
                       <p className="text-[11px] text-marigold font-semibold flex items-center gap-1.5">
                         {item.originalPrice && (
                           <span className="text-[10px] text-ink-soft line-through font-mono">₹{item.originalPrice.toFixed(2)}</span>
                         )}
                         <span className="font-mono">₹{item.price.toFixed(2)} each</span>
                       </p>
-                      {orderType === "TAKEAWAY" && (
+                      {orderType === "TAKEAWAY" && !item.isDineInOnly && (
                         <p className="text-[10px] text-ink-soft">Parcel Container: +₹{item.takeawayCharge || 10}</p>
                       )}
                     </div>
 
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2 bg-cardstock border border-ink/15 rounded p-1 text-xs font-bold">
-                        <button onClick={() => removeFromCart(item.id)} className="p-1 text-ink-soft hover:text-ink">
+                        <button onClick={() => removeFromCart(item.id)} className="p-1 text-ink-soft hover:text-ink cursor-pointer">
                           <Minus className="w-3.5 h-3.5" />
                         </button>
                         <span className="px-2 font-mono text-ink">{item.quantity}</span>
-                        <button onClick={() => addToCart(item)} className="p-1 text-ink-soft hover:text-ink">
+                        <button onClick={() => addToCart(item)} className="p-1 text-ink-soft hover:text-ink cursor-pointer">
                           <Plus className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -245,16 +298,31 @@ export default function StudentCartPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              setIsRedirecting(true);
-              router.push("/student/checkout");
-            }}
-            className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
-          >
-            <span>Proceed to Checkout & Cashfree Payment</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          {orderType === "TAKEAWAY" && hasDineInOnlyItems ? (
+            <div className="space-y-2">
+              <div className="p-3 rounded bg-chili-soft border border-chili/40 text-chili text-xs font-bold text-center">
+                ⚠️ Takeaway Locked: "{dineInOnlyItemNames.join(", ")}" is Dine-In only.
+              </div>
+              <button
+                onClick={() => setOrderType("DINE_IN")}
+                className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <span>Switch to Dine-In to Checkout</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setIsRedirecting(true);
+                router.push("/student/checkout");
+              }}
+              className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <span>Proceed to Checkout & Cashfree Payment</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </main>
 

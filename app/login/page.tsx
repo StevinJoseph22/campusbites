@@ -17,10 +17,19 @@ import {
   GraduationCap,
   Store,
   ChevronDown,
-  Info
+  Info,
+  Search,
+  AlertTriangle,
+  AlertCircle,
+  LogIn,
+  Check,
+  RotateCcw,
+  Send,
+  RefreshCw
 } from "lucide-react";
 import { PageLoader } from "@/components/PageLoader";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { validateCollegeEmailPrefix } from "@/lib/email-validator";
 
 interface InstitutionItem {
   id: string;
@@ -79,18 +88,32 @@ export default function LoginPage() {
 
   // Register New Users Modal States
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [regCollegeId, setRegCollegeId] = useState("kju");
+  const [regCollegeId, setRegCollegeId] = useState("");
+  const [regCollegeSearch, setRegCollegeSearch] = useState("");
+  const [isCollegeDropdownOpen, setIsCollegeDropdownOpen] = useState(false);
   const [regUsername, setRegUsername] = useState("");
   const [regName, setRegName] = useState("");
-  const [regCampus, setRegCampus] = useState("Central Campus");
+  const [regCampus, setRegCampus] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [regOtp, setRegOtp] = useState("");
   const [isRegOtpSent, setIsRegOtpSent] = useState(false);
   const [isSendingRegOtp, setIsSendingRegOtp] = useState(false);
+  const [regOtpCooldown, setRegOtpCooldown] = useState(0);
   const [regError, setRegError] = useState<string | null>(null);
   const [regSuccess, setRegSuccess] = useState<string | null>(null);
+  const [regAlreadyRegistered, setRegAlreadyRegistered] = useState(false);
+  const [isOtpInvalid, setIsOtpInvalid] = useState(false);
   const [isSubmittingReg, setIsSubmittingReg] = useState(false);
+
+  // OTP resend cooldown timer
+  useEffect(() => {
+    if (regOtpCooldown <= 0) return;
+    const timer = setTimeout(() => setRegOtpCooldown(prev => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [regOtpCooldown]);
 
   // Forgot Password / Reset Modal States
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -127,12 +150,25 @@ export default function LoginPage() {
   }, []);
 
   // Update register campus options when chosen college changes
-  const selectedRegInstitution = institutions.find(i => i.id === regCollegeId) || institutions[0];
+  const selectedRegInstitution = regCollegeId ? institutions.find(i => i.id === regCollegeId) : undefined;
+  const matchingColleges = institutions.filter((inst) =>
+    !regCollegeSearch.trim() ||
+    inst.name.toLowerCase().includes(regCollegeSearch.toLowerCase()) ||
+    inst.code.toLowerCase().includes(regCollegeSearch.toLowerCase()) ||
+    inst.id.toLowerCase().includes(regCollegeSearch.toLowerCase())
+  );
+
+  const regEmailValidation = selectedRegInstitution && regCollegeId && regUsername.trim()
+    ? validateCollegeEmailPrefix(regUsername, selectedRegInstitution.emailDomain)
+    : null;
+
   useEffect(() => {
     if (selectedRegInstitution && selectedRegInstitution.campuses && selectedRegInstitution.campuses.length > 0) {
       setRegCampus(selectedRegInstitution.campuses[0]);
+    } else {
+      setRegCampus("");
     }
-  }, [regCollegeId, institutions]);
+  }, [regCollegeId, selectedRegInstitution]);
 
   // UNIFIED SMART LOGIN HANDLER
   const handleLogin = async (e: React.FormEvent) => {
@@ -175,111 +211,154 @@ export default function LoginPage() {
       const user = data.user;
       const userRole = user.role;
       const instId = user.institutionId || (user.institution ? user.institution.id : "kju");
-      const instName = user.institution?.name || (instId === "kju" ? "Kristu Jayanti University" : "Campus");
-      const userDisplayName = user.name || user.username;
+      const instName = user.institution ? user.institution.name : (institutions.find(i => i.id === instId)?.name || "Kristu Jayanti University");
 
-      // Save user session in localStorage
       localStorage.setItem("campusbites_user_role", userRole);
-      localStorage.setItem("campusbites_user_name", userDisplayName);
+      localStorage.setItem("campusbites_user_name", user.name || user.username);
       localStorage.setItem("campusbites_user_phone", user.email || user.username);
       localStorage.setItem("campusbites_student_reg", user.username);
       localStorage.setItem("campusbites_student_campus", user.campus || "Central Campus");
       localStorage.setItem("campusbites_selected_institution", instId);
       localStorage.setItem("campusbites_institution_name", instName);
 
-      if (userRole === "VENDOR") {
-        const stallId = user.restaurant?.id || (user.email ? user.email.split("@")[0] : user.username);
-        localStorage.setItem("campusbites_active_vendor_id", stallId);
-        if (user.restaurant) {
-          localStorage.setItem("campusbites_active_vendor_data", JSON.stringify(user.restaurant));
-        }
+      if (userRole === "VENDOR" && user.restaurantId) {
+        localStorage.setItem("campusbites_vendor_restaurant_id", user.restaurantId);
+        localStorage.setItem("campusbites_vendor_restaurant_name", user.restaurant?.name || "My Canteen Stall");
+        localStorage.setItem("campusbites_vendor_stall_code", user.username);
       }
 
-      // Smart Role-Based Welcome Screen & Redirection
-      if (userRole === "SUPER_ADMIN") {
-        setLoadingState({
-          active: true,
-          message: "Welcome Super Admin! 🛡️",
-          submessage: "Loading Multi-College SaaS Control Center...",
-          type: "auth"
-        });
-        setTimeout(() => router.push("/admin"), 1000);
-      } else if (userRole === "ADMIN") {
-        setLoadingState({
-          active: true,
-          message: `Welcome ${instName} Admin! 🏛️`,
-          submessage: "Loading University Administration Dashboard...",
-          type: "auth"
-        });
-        setTimeout(() => router.push("/admin"), 1000);
-      } else if (userRole === "VENDOR") {
-        setLoadingState({
-          active: true,
-          message: `Welcome ${userDisplayName}! 🍳`,
-          submessage: "Loading Kitchen Order Terminal & Menu...",
-          type: "auth"
-        });
-        setTimeout(() => router.push("/vendor/dashboard"), 1000);
-      } else {
-        // STUDENT
-        setLoadingState({
-          active: true,
-          message: `Welcome ${userDisplayName}! 🎓`,
-          submessage: `Loading ${instName} Canteen Hub...`,
-          type: "auth"
-        });
-        setTimeout(() => router.push("/student/dashboard"), 1000);
-      }
+      setLoadingState({
+        active: true,
+        message: `Welcome back, ${user.name || user.username}! 🌟`,
+        submessage: userRole === "VENDOR" 
+          ? `Opening ${user.restaurant?.name || "Stall"} Dashboard...` 
+          : userRole === "ADMIN" 
+          ? "Opening University Administrator Portal..." 
+          : `Entering ${instName} Canteen Hub...`,
+        type: "auth"
+      });
+
+      setTimeout(() => {
+        if (userRole === "ADMIN") {
+          router.push("/admin");
+        } else if (userRole === "VENDOR") {
+          router.push("/vendor/orders");
+        } else {
+          router.push("/student/dashboard");
+        }
+      }, 900);
+
     } catch (err: any) {
       setIsLoading(false);
       setErrorMessage("Network or connection error. Please try again.");
     }
   };
 
+  // Smart prefix input handler - strips @domain.com automatically
+  const handleRegUsernameChange = (val: string) => {
+    let clean = val;
+    if (clean.includes("@")) {
+      clean = clean.split("@")[0];
+    }
+    clean = clean.replace(/\s+/g, "");
+    setRegUsername(clean);
+  };
+
   // SEND REGISTRATION OTP
   const handleSendRegOtp = async () => {
-    if (!regUsername.trim()) {
-      setRegError("Please enter your Register Number or Student ID first.");
+    if (!regCollegeId || !selectedRegInstitution) {
+      setRegError("Please search and select your registered College / University first.");
       return;
     }
+    if (!regUsername.trim()) {
+      setRegError("Please enter your official ID or name (before the @) first.");
+      return;
+    }
+
+    const valResult = validateCollegeEmailPrefix(regUsername, selectedRegInstitution.emailDomain);
+    if (!valResult.valid) {
+      setRegError(valResult.error || "Please enter a valid official college ID or student roll number.");
+      return;
+    }
+
     setIsSendingRegOtp(true);
     setRegError(null);
     setRegSuccess(null);
+    setRegAlreadyRegistered(false);
+    setIsOtpInvalid(false);
 
     const emailDomain = selectedRegInstitution.emailDomain;
-    const cleanReg = regUsername.includes("@") ? regUsername.split("@")[0].trim() : regUsername.trim();
-    const targetEmail = `${cleanReg.toLowerCase()}@${emailDomain}`;
+    const cleanPrefix = valResult.cleanPrefix;
+    const targetEmail = `${cleanPrefix.toLowerCase()}@${emailDomain}`;
 
     try {
       const res = await fetch("/api/auth/send-email-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: targetEmail })
+        body: JSON.stringify({ 
+          email: targetEmail,
+          username: cleanPrefix,
+          purpose: "register"
+        })
       });
       const data = await res.json();
       setIsSendingRegOtp(false);
 
+      if (data.alreadyRegistered) {
+        setRegAlreadyRegistered(true);
+        setRegError(data.error || "This official ID or email is already registered on CampusBites.");
+        return;
+      }
+
       if (data.success) {
         setIsRegOtpSent(true);
-        setRegSuccess(`✓ OTP code generated for ${targetEmail}. (Check inbox or use default demo 1234)`);
+        setRegOtpCooldown(60);
+        setRegSuccess(`✓ 4-digit verification code sent to ${targetEmail}. Please check your inbox & Spam folder.`);
       } else {
-        setRegError(data.error || "Failed to send OTP email.");
+        setRegError(data.error || "Failed to send OTP email. Please try again.");
       }
     } catch (e: any) {
       setIsSendingRegOtp(false);
-      setRegError("Failed to generate OTP. You can proceed with password creation.");
+      setRegError("Network error sending verification OTP. Please try again.");
     }
   };
 
   // SUBMIT REGISTER NEW USERS
   const handleRegisterNewUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setRegAlreadyRegistered(false);
+    setIsOtpInvalid(false);
+
+    if (!regCollegeId || !selectedRegInstitution) {
+      setRegError("Please search and select your registered College / University first.");
+      return;
+    }
     if (!regUsername.trim() || !regPassword.trim()) {
-      setRegError("Please fill in all required fields.");
+      setRegError("Please enter your official ID and set a password.");
+      return;
+    }
+
+    const valResult = validateCollegeEmailPrefix(regUsername, selectedRegInstitution.emailDomain);
+    if (!valResult.valid) {
+      setRegError(valResult.error || "Please enter a valid official college ID or student roll number.");
+      return;
+    }
+
+    if (regPassword.length < 6) {
+      setRegError("Password must be at least 6 characters long.");
       return;
     }
     if (regPassword !== regConfirmPassword) {
-      setRegError("Passwords do not match.");
+      setRegError("Passwords do not match. Please verify.");
+      return;
+    }
+    if (!isRegOtpSent) {
+      setRegError("Please click 'Send Verification OTP' to verify your college email.");
+      return;
+    }
+    if (!regOtp.trim()) {
+      setIsOtpInvalid(true);
+      setRegError("Please enter the 4-digit OTP code sent to your email.");
       return;
     }
 
@@ -294,7 +373,7 @@ export default function LoginPage() {
           username: regUsername.trim(),
           name: regName.trim() || regUsername.trim(),
           password: regPassword.trim(),
-          otp: regOtp.trim() || "1234",
+          otp: regOtp.trim(),
           campus: regCampus,
           institutionId: regCollegeId,
           role: "STUDENT"
@@ -304,11 +383,23 @@ export default function LoginPage() {
       const data = await res.json();
       setIsSubmittingReg(false);
 
+      if (data.alreadyRegistered) {
+        setRegAlreadyRegistered(true);
+        setRegError(data.error || "This official ID or email is already registered on CampusBites.");
+        return;
+      }
+
+      if (data.invalidOtp) {
+        setIsOtpInvalid(true);
+        setRegError(data.error || "❌ Invalid OTP code entered. Please re-check or request a new code.");
+        return;
+      }
+
       if (data.success) {
         setShowRegisterModal(false);
         setSuccessMessage(`✓ Account created successfully for ${regUsername}! Signing you in...`);
         
-        // Auto-login newly registered student
+        // Auto-login newly registered student/user
         const user = data.user;
         localStorage.setItem("campusbites_user_role", "STUDENT");
         localStorage.setItem("campusbites_user_name", user.name || user.username);
@@ -316,12 +407,12 @@ export default function LoginPage() {
         localStorage.setItem("campusbites_student_reg", user.username);
         localStorage.setItem("campusbites_student_campus", user.campus || regCampus);
         localStorage.setItem("campusbites_selected_institution", regCollegeId);
-        localStorage.setItem("campusbites_institution_name", selectedRegInstitution.name);
+        localStorage.setItem("campusbites_institution_name", selectedRegInstitution?.name || "College");
 
         setLoadingState({
           active: true,
           message: `Welcome ${user.name || user.username}! 🎓`,
-          submessage: `Loading ${selectedRegInstitution.name} Canteen Hub...`,
+          submessage: `Loading ${selectedRegInstitution?.name || "Campus"} Canteen Hub...`,
           type: "auth"
         });
         setTimeout(() => router.push("/student/dashboard"), 1000);
@@ -330,7 +421,7 @@ export default function LoginPage() {
       }
     } catch (e: any) {
       setIsSubmittingReg(false);
-      setRegError("Registration error: " + e.message);
+      setRegError("Network error. Please try again.");
     }
   };
 
@@ -359,21 +450,21 @@ export default function LoginPage() {
 
       if (data.success) {
         setIsResetOtpSent(true);
-        setResetSuccess(`✓ OTP code generated for ${cleanId}. (Default demo code: 1234)`);
+        setResetSuccess(`✓ 4-digit OTP verification code sent to ${cleanId}. Please check your inbox & Spam folder.`);
       } else {
         setResetError(data.error || "Failed to send reset OTP.");
       }
     } catch (e: any) {
       setIsSendingResetOtp(false);
-      setResetError("Failed to send OTP. You may use demo code 1234.");
+      setResetError("Network error sending OTP. Please try again.");
     }
   };
 
   // SUBMIT PASSWORD RESET
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetInput.trim() || !resetPassword.trim()) {
-      setResetError("Please fill in all required fields.");
+    if (!resetInput.trim() || !resetPassword.trim() || !resetOtp.trim()) {
+      setResetError("Please enter your email/ID, the OTP code received, and your new password.");
       return;
     }
     setIsSubmittingReset(true);
@@ -388,7 +479,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: cleanId,
-          otp: resetOtp.trim() || "1234",
+          otp: resetOtp.trim(),
           newPassword: resetPassword.trim()
         })
       });
@@ -402,7 +493,7 @@ export default function LoginPage() {
         setUsername(resetInput.trim());
         setPassword("");
       } else {
-        setResetError(data.error || "Failed to reset password.");
+        setResetError(data.error || "Failed to reset password. Please check the OTP.");
       }
     } catch (e: any) {
       setIsSubmittingReset(false);
@@ -501,6 +592,7 @@ export default function LoginPage() {
                   placeholder="e.g. 21bcaf59, bamboos, or superadmin"
                   className="w-full bg-surface border border-ink/15 rounded-xl pl-10 pr-4 py-2.5 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold focus:ring-1 focus:ring-marigold transition-all"
                   autoComplete="username"
+                  suppressHydrationWarning
                 />
               </div>
             </div>
@@ -514,7 +606,8 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowForgotModal(true)}
-                  className="text-[11px] font-bold text-marigold hover:underline"
+                  suppressHydrationWarning
+                  className="text-[11px] font-bold text-marigold hover:underline cursor-pointer"
                 >
                   Forgot Password?
                 </button>
@@ -529,11 +622,13 @@ export default function LoginPage() {
                   placeholder="Enter your password"
                   className="w-full bg-surface border border-ink/15 rounded-xl pl-10 pr-10 py-2.5 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold focus:ring-1 focus:ring-marigold transition-all"
                   autoComplete="current-password"
+                  suppressHydrationWarning
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-3 text-ink-soft hover:text-ink transition-colors"
+                  suppressHydrationWarning
+                  className="absolute right-3.5 top-3 text-ink-soft hover:text-ink transition-colors cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -544,6 +639,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
+              suppressHydrationWarning
               className="w-full bg-marigold hover:bg-marigold-hover active:scale-[0.99] py-3 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
             >
               {isLoading ? (
@@ -570,9 +666,14 @@ export default function LoginPage() {
               onClick={() => {
                 setRegError(null);
                 setRegSuccess(null);
+                setRegAlreadyRegistered(false);
+                setIsOtpInvalid(false);
+                setRegCollegeSearch("");
+                setIsCollegeDropdownOpen(false);
                 setShowRegisterModal(true);
               }}
-              className="w-full py-2.5 px-4 rounded-xl bg-surface hover:bg-cardstock-hover border border-ink/15 text-xs font-bold text-ink transition-colors flex items-center justify-center gap-1.5"
+              suppressHydrationWarning
+              className="w-full py-2.5 px-4 rounded-xl bg-surface hover:bg-cardstock-hover border border-ink/15 text-xs font-bold text-ink transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <GraduationCap className="w-4 h-4 text-marigold" />
               <span>Register New Users →</span>
@@ -581,7 +682,7 @@ export default function LoginPage() {
         </div>
 
         {/* Footer Note */}
-        <p className="text-center text-[11px] text-ink-soft">
+        <p suppressHydrationWarning className="text-center text-[11px] text-ink-soft">
           Protected by CampusBites Universal Multi-College Auth &copy; {new Date().getFullYear()}
         </p>
       </div>
@@ -590,6 +691,7 @@ export default function LoginPage() {
       {showRegisterModal && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-cardstock border border-ink/20 w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            {/* Register Modal Header */}
             <div className="flex items-center justify-between border-b border-ink/10 pb-3">
               <div>
                 <h2 className="text-base font-black text-ink flex items-center gap-2 font-display">
@@ -597,125 +699,388 @@ export default function LoginPage() {
                   Register New User Account
                 </h2>
                 <p className="text-[11px] text-ink-soft">
-                  Create your student profile and access your college canteens
+                  Create your profile for campus canteens & pre-order access
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowRegisterModal(false)}
-                className="text-ink-soft hover:text-ink font-bold text-base p-1"
+                className="text-ink-soft hover:text-ink font-bold text-base p-1 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {regError && (
-              <div className="p-3 rounded-xl bg-chili-soft border border-chili/30 text-chili text-xs font-bold flex items-center gap-2">
+            {/* Smart Guide for Already Registered Users */}
+            {regAlreadyRegistered && (
+              <div className="p-4 rounded-2xl bg-marigold/10 border-2 border-marigold/40 text-ink space-y-3 animate-in fade-in zoom-in-95">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-marigold/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <ShieldCheck className="w-4 h-4 text-marigold" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="font-extrabold text-xs text-ink font-sans">Account Already Registered!</h4>
+                    <p className="text-[11px] text-ink-soft font-sans leading-relaxed">
+                      An account is already registered with this official ID (<strong>{regUsername.trim()}</strong>) or email. You do not need to register again!
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRegisterModal(false);
+                      setShowForgotModal(true);
+                      setResetInput(regUsername.trim());
+                      setResetCollegeId(regCollegeId);
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl bg-cardstock hover:bg-cardstock-hover border border-marigold/40 text-marigold font-black text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Reset Password</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRegisterModal(false);
+                      setUsername(regUsername.trim());
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl bg-marigold hover:bg-marigold-hover text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Go to Sign In</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {regError && !regAlreadyRegistered && (
+              <div className="p-3 rounded-xl bg-chili-soft border border-chili/30 text-chili text-xs font-bold flex items-center gap-2 animate-in fade-in">
                 <Info className="w-4 h-4 shrink-0" />
                 <span>{regError}</span>
               </div>
             )}
 
             {regSuccess && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold flex items-center gap-2 animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{regSuccess}</span>
               </div>
             )}
 
-            <form onSubmit={handleRegisterNewUser} className="space-y-3.5 text-xs">
-              {/* College Selection */}
-              <div className="space-y-1">
-                <label className="font-extrabold text-ink block text-[11px]">Select Your College / University *</label>
+            <form onSubmit={handleRegisterNewUser} className="space-y-4 text-xs">
+              {/* 1. Searchable College / University Typeahead (No dropdown until typed) */}
+              <div className="space-y-1 relative">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-ink block text-[11px]">
+                    Select Your College / University *
+                  </label>
+                  {selectedRegInstitution && regCollegeId && regCollegeSearch.trim() ? (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Selected: {selectedRegInstitution.code}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-ink-soft font-semibold">Type to search</span>
+                  )}
+                </div>
+
                 <div className="relative">
-                  <Building2 className="w-4 h-4 text-marigold absolute left-3 top-2.5" />
+                  <Building2 className="w-4 h-4 text-marigold absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    required
+                    value={regCollegeSearch}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setRegCollegeSearch(val);
+                      setIsCollegeDropdownOpen(true);
+                      const directMatch = institutions.find(i => 
+                        i.name.toLowerCase() === val.toLowerCase() || 
+                        i.code.toLowerCase() === val.toLowerCase() ||
+                        i.id.toLowerCase() === val.toLowerCase()
+                      );
+                      if (directMatch) {
+                        setRegCollegeId(directMatch.id);
+                        if (directMatch.campuses && directMatch.campuses.length > 0) {
+                          setRegCampus(directMatch.campuses[0]);
+                        }
+                      } else {
+                        setRegCollegeId("");
+                      }
+                    }}
+                    placeholder="Type college name (e.g. Kristu Jayanti, Christ, RVCE)..."
+                    className="w-full bg-surface border border-ink/15 rounded-xl pl-10 pr-4 py-2.5 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold font-bold font-sans"
+                  />
+                </div>
+
+                {/* College Suggestions Dropdown — ONLY APPEARS WHEN USER HAS TYPED SOMETHING */}
+                {isCollegeDropdownOpen && regCollegeSearch.trim().length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-cardstock border border-ink/20 rounded-2xl shadow-2xl max-h-56 overflow-y-auto p-1.5 space-y-1">
+                    {matchingColleges.length > 0 ? (
+                      matchingColleges.map((inst) => (
+                        <button
+                          key={inst.id}
+                          type="button"
+                          onClick={() => {
+                            setRegCollegeId(inst.id);
+                            setRegCollegeSearch(inst.name);
+                            setIsCollegeDropdownOpen(false);
+                            if (inst.campuses && inst.campuses.length > 0) {
+                              setRegCampus(inst.campuses[0]);
+                            }
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl transition-colors flex items-center justify-between gap-2 text-xs cursor-pointer ${
+                            regCollegeId === inst.id
+                              ? "bg-marigold/15 text-ink font-bold border border-marigold/30"
+                              : "hover:bg-surface text-ink-soft hover:text-ink"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-surface border border-ink/10 flex items-center justify-center shrink-0">
+                              <Building2 className="w-3.5 h-3.5 text-marigold" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-ink font-sans">{inst.name}</p>
+                              <p className="text-[10px] text-ink-soft font-sans">@{inst.emailDomain} · Code: {inst.code}</p>
+                            </div>
+                          </div>
+                          {regCollegeId === inst.id && <Check className="w-4 h-4 text-marigold shrink-0" />}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-3 bg-chili-soft border border-chili/30 rounded-xl text-xs text-chili space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold font-sans">
+                          <AlertTriangle className="w-4 h-4 text-chili shrink-0" />
+                          <span>Unregistered College / University</span>
+                        </div>
+                        <p className="text-[11px] text-ink-soft font-sans leading-relaxed">
+                          "{regCollegeSearch}" is not registered on CampusBites. Please contact your college administrator to onboard your institution.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Campus Location - ONLY VISIBLE ONCE A REGISTERED COLLEGE IS SELECTED */}
+              {selectedRegInstitution && regCollegeId ? (
+                <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                  <div className="flex items-center justify-between">
+                    <label className="font-extrabold text-ink block text-[11px]">
+                      Campus Location *
+                    </label>
+                    <span className="text-[10px] text-ink-soft">
+                      {selectedRegInstitution.campuses.length} Campuses Available
+                    </span>
+                  </div>
                   <select
-                    value={regCollegeId}
-                    onChange={(e) => setRegCollegeId(e.target.value)}
-                    className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-8 py-2 text-xs text-ink font-bold focus:outline-none focus:border-marigold"
+                    value={regCampus}
+                    onChange={(e) => setRegCampus(e.target.value)}
+                    className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2.5 text-xs text-ink focus:outline-none focus:border-marigold font-bold cursor-pointer font-sans"
                   >
-                    {institutions.map(inst => (
-                      <option key={inst.id} value={inst.id}>
-                        {inst.name} (@{inst.emailDomain})
+                    {(selectedRegInstitution.campuses || ["Central Campus"]).map((camp, idx) => (
+                      <option key={idx} value={camp}>
+                        {camp}
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="w-4 h-4 text-ink-soft absolute right-3 top-2.5 pointer-events-none" />
                 </div>
-              </div>
+              ) : null}
 
-              {/* Campus Location */}
-              <div className="space-y-1">
-                <label className="font-extrabold text-ink block text-[11px]">Campus Location *</label>
-                <select
-                  value={regCampus}
-                  onChange={(e) => setRegCampus(e.target.value)}
-                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold font-bold"
-                >
-                  {(selectedRegInstitution.campuses || ["Central Campus"]).map((camp, idx) => (
-                    <option key={idx} value={camp}>
-                      {camp}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Register Number / Student ID */}
-              <div className="space-y-1">
-                <label className="font-extrabold text-ink block text-[11px]">Student Register Number *</label>
+              {/* 3. Official College Email ID / Staff ID (Clean Modern Typography) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-ink block text-[11px]">
+                    Official College Email ID / Staff ID *
+                  </label>
+                  <span className="text-[10px] text-ink-soft font-bold">Students & Staff</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
-                    <User className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                    <User className="w-4 h-4 text-ink-soft absolute left-3.5 top-3" />
                     <input
                       type="text"
                       required
                       value={regUsername}
-                      onChange={(e) => setRegUsername(e.target.value)}
-                      placeholder="e.g. 21bcaf59 or 24mca102"
-                      className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold font-mono font-bold"
+                      onChange={(e) => {
+                        handleRegUsernameChange(e.target.value);
+                        setRegAlreadyRegistered(false);
+                      }}
+                      placeholder="e.g. stevin.b or 21bcaf59"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-10 pr-3 py-2.5 text-xs text-ink focus:outline-none focus:border-marigold font-bold font-sans placeholder-ink-soft/60"
                     />
                   </div>
-                  <span className="text-[11px] font-mono text-ink-soft bg-surface border border-ink/10 px-2.5 py-2 rounded-xl">
-                    @{selectedRegInstitution.emailDomain}
+                  <span className={`text-xs font-sans font-black px-3 py-2.5 rounded-xl shrink-0 tracking-wide ${
+                    selectedRegInstitution && regCollegeId
+                      ? "text-marigold bg-marigold/10 border border-marigold/30"
+                      : "text-ink-soft bg-surface border border-ink/15"
+                  }`}>
+                    {selectedRegInstitution && regCollegeId ? `@${selectedRegInstitution.emailDomain}` : "@select-college"}
                   </span>
                 </div>
+                <div className="flex items-center justify-between pt-1 text-[11px] text-ink-soft flex-wrap gap-1">
+                  <span className="text-ink-soft font-medium">Enter only prefix before @</span>
+                  <span className="inline-flex items-center gap-1.5 bg-surface px-2.5 py-1 rounded-lg border border-ink/10 text-[11px] font-sans font-bold text-ink">
+                    <Mail className="w-3.5 h-3.5 text-marigold" />
+                    <span>Official Login:</span>
+                    {selectedRegInstitution && regCollegeId ? (
+                      <span className="text-marigold font-black">{regUsername ? regUsername.toLowerCase() : "id"}@{selectedRegInstitution.emailDomain}</span>
+                    ) : (
+                      <span className="text-ink-soft font-normal italic">Select college above first</span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Live validation feedback for Official ID / Register Number */}
+                {selectedRegInstitution && regCollegeId && regUsername.trim().length >= 3 && regEmailValidation && (
+                  <div className="pt-0.5 animate-in fade-in">
+                    {regEmailValidation.valid ? (
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Valid {regEmailValidation.type === "STUDENT" ? "Student Register No." : "Staff / Faculty Email ID"}</span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-chili font-bold flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{regEmailValidation.error}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Full Name */}
+              {/* 4. Email OTP Verification with Wrong OTP Highlight & Spam Notice */}
+              <div className="space-y-2 p-3.5 bg-cardstock-hover/40 rounded-2xl border border-ink/10">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 font-extrabold text-ink text-[11px]">
+                    <Mail className="w-3.5 h-3.5 text-marigold" />
+                    <span>Email OTP Verification *</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendRegOtp}
+                    disabled={isSendingRegOtp || regOtpCooldown > 0 || !regUsername.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-marigold hover:bg-marigold-hover disabled:bg-cardstock disabled:text-ink-soft text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {isSendingRegOtp ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Verifying Mailbox & Sending OTP...</span>
+                      </>
+                    ) : regOtpCooldown > 0 ? (
+                      <>
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Resend in {regOtpCooldown}s</span>
+                      </>
+                    ) : isRegOtpSent ? (
+                      <>
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Resend Code</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3 h-3" />
+                        <span>Send Verification OTP</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {isRegOtpSent && (
+                  <div className="space-y-2 animate-in fade-in">
+                    {/* Spam Folder Alert Notice */}
+                    <div className="p-2.5 rounded-xl bg-marigold/10 border border-marigold/30 text-xs text-ink space-y-0.5">
+                      <p className="text-[11px] text-ink leading-relaxed font-sans">
+                        📬 4-digit code sent to <strong className="text-marigold font-bold">{regUsername.toLowerCase()}@{selectedRegInstitution?.emailDomain}</strong>.
+                      </p>
+                      <p className="text-[11px] text-ink-soft font-sans">
+                        👉 <strong className="text-ink font-bold">Kindly check your Spam / Junk folder</strong> if you do not see it in your inbox!
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        required
+                        maxLength={6}
+                        value={regOtp}
+                        onChange={(e) => {
+                          setRegOtp(e.target.value.trim());
+                          setIsOtpInvalid(false);
+                          setRegError(null);
+                        }}
+                        placeholder="Enter 4-Digit OTP Code"
+                        className={`w-full bg-surface border rounded-xl px-4 py-2.5 text-xs text-ink font-sans font-black tracking-widest text-center focus:outline-none transition-all ${
+                          isOtpInvalid 
+                            ? "border-chili ring-2 ring-chili/30 bg-chili-soft/20 text-chili placeholder-chili/60" 
+                            : "border-ink/15 focus:border-marigold"
+                        }`}
+                      />
+                      {isOtpInvalid && (
+                        <div className="p-2.5 rounded-xl bg-chili-soft border border-chili/40 text-chili text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>❌ Incorrect OTP code entered. Please re-check the 4 digits or click "Resend Code".</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Full Name */}
               <div className="space-y-1">
                 <label className="font-extrabold text-ink block text-[11px]">Full Name</label>
                 <input
                   type="text"
                   value={regName}
                   onChange={(e) => setRegName(e.target.value)}
-                  placeholder="e.g. Alex Johnson"
-                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
+                  placeholder="e.g. Stevin Joseph B"
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:outline-none focus:border-marigold font-bold font-sans"
                 />
               </div>
 
-              {/* Password & Confirm Password */}
+              {/* 6. Password & Confirm Password */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-extrabold text-ink block text-[11px]">Password *</label>
-                  <input
-                    type="password"
-                    required
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="Min 6 characters"
-                    className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showRegPassword ? "text" : "password"}
+                      required
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      placeholder="Min 6 characters"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-3.5 pr-8 py-2.5 text-xs text-ink focus:outline-none focus:border-marigold font-sans font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPassword(!showRegPassword)}
+                      className="absolute right-2.5 top-3 text-ink-soft hover:text-ink cursor-pointer"
+                    >
+                      {showRegPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
+
                 <div className="space-y-1">
                   <label className="font-extrabold text-ink block text-[11px]">Confirm Password *</label>
-                  <input
-                    type="password"
-                    required
-                    value={regConfirmPassword}
-                    onChange={(e) => setRegConfirmPassword(e.target.value)}
-                    placeholder="Repeat password"
-                    className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showRegConfirmPassword ? "text" : "password"}
+                      required
+                      value={regConfirmPassword}
+                      onChange={(e) => setRegConfirmPassword(e.target.value)}
+                      placeholder="Repeat password"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-3.5 pr-8 py-2.5 text-xs text-ink focus:outline-none focus:border-marigold font-sans font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
+                      className="absolute right-2.5 top-3 text-ink-soft hover:text-ink cursor-pointer"
+                    >
+                      {showRegConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -728,7 +1093,7 @@ export default function LoginPage() {
                 {isSubmittingReg ? (
                   <div className="flex items-center gap-2">
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Registering Account...</span>
+                    <span>Registering Account & Signing In...</span>
                   </div>
                 ) : (
                   <>

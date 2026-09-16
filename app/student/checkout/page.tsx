@@ -179,6 +179,16 @@ export default function CheckoutPage() {
     setErrorMessage(null);
 
     try {
+      // 0. Validate Dine-In Only items when Takeaway is selected
+      if (orderType === "TAKEAWAY") {
+        const dineInItems = cartItems.filter(i => i.isDineInOnly);
+        if (dineInItems.length > 0) {
+          setErrorMessage(`⚠️ "${dineInItems.map(i => i.name).join(", ")}" is strictly Dine-In only. You cannot order it for takeaway. Please switch to Dine-In.`);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
       // 0. Validate item availability and time constraints
       const currentMinutes = new Date().getHours() * 60 + new Date().getMinutes();
       const selectedSlotStart = parseTimeToMinutes(selectedSlot.split("-")[0].trim());

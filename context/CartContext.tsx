@@ -16,6 +16,7 @@ export interface CartItem {
   takeawayCharge?: number; // Container charge per item (e.g. ₹10)
   campus?: string;
   originalPrice?: number; // Pre-discount unit price
+  isDineInOnly?: boolean; // Strictly dine-in only (no parcel/takeaway packaging)
 }
 
 interface CartContextType {
@@ -39,6 +40,8 @@ interface CartContextType {
   platformFeePercent: number;
   convenienceFeePercent: number;
   packagingFee: number;
+  hasDineInOnlyItems: boolean;
+  dineInOnlyItemNames: string[];
   itemsByStall: Record<string, { stallId: string; stallName: string; campus: string; items: CartItem[] }>;
 }
 
@@ -96,7 +99,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (existing) {
         return prev.map(i => i.id === itemData.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
-      return [...prev, { ...itemData, quantity: 1, takeawayCharge: itemData.takeawayCharge ?? 10 }];
+      return [...prev, { ...itemData, quantity: 1, isDineInOnly: Boolean(itemData.isDineInOnly), takeawayCharge: itemData.takeawayCharge ?? 10 }];
     });
   };
 
@@ -123,6 +126,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const totalCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   const totalAmount = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+
+  // Dine-in only items check
+  const dineInOnlyItems = cartItems.filter(i => i.isDineInOnly);
+  const hasDineInOnlyItems = dineInOnlyItems.length > 0;
+  const dineInOnlyItemNames = dineInOnlyItems.map(i => i.name);
 
   // Platform fee and convenience fee each apply to every order, dine-in or takeaway: a % of the food subtotal.
   const platformFee = Math.round(totalAmount * (platformFeePercent / 100) * 100) / 100;
@@ -166,6 +174,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       platformFeePercent,
       convenienceFeePercent,
       packagingFee,
+      hasDineInOnlyItems,
+      dineInOnlyItemNames,
       itemsByStall
     }}>
       {children}

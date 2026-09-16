@@ -17,6 +17,7 @@ import {
   Download,
   AlertTriangle
 } from "lucide-react";
+import { VendorSalesSkeleton } from "@/components/Skeletons";
 
 export default function VendorSalesReportPage() {
   const router = useRouter();
@@ -318,7 +319,11 @@ export default function VendorSalesReportPage() {
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Title Header */}
+        {loading ? (
+          <VendorSalesSkeleton />
+        ) : (
+          <>
+            {/* Title Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="font-display text-xl sm:text-2xl font-bold text-ink flex items-center gap-2">
@@ -562,6 +567,8 @@ export default function VendorSalesReportPage() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </main>
     </div>
   );

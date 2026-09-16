@@ -64,19 +64,63 @@ async function resolveRestaurantId(rawId: string, autoCreateOnMissing = false): 
   return trimmed;
 }
 
-// Fetch menu items for a restaurant stall
+// Fetch menu items for a restaurant stall or campus-wide offers in 1 fast query
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const restaurantId = searchParams.get("restaurantId");
+    const offersOnly = searchParams.get("offersOnly") === "true";
+    const campus = searchParams.get("campus");
+    const all = searchParams.get("all") === "true";
 
-    if (!restaurantId) {
-      return NextResponse.json(
-        { success: false, error: "Restaurant ID is required" },
-        { status: 400 }
-      );
+    // 1. Fast Batch Query: Campus-wide Hot Deals / All Dishes (eliminates 15 sequential HTTP requests)
+    if (offersOnly || all || !restaurantId) {
+      const whereCondition: any = {};
+      if (offersOnly) {
+        whereCondition.offerType = { not: "NONE" };
+        whereCondition.offerValue = { gt: 0 };
+        whereCondition.available = true;
+      }
+      if (campus) {
+        whereCondition.restaurant = {
+          campus: campus
+        };
+      }
+
+      const items = await prisma.menuItem.findMany({
+        where: whereCondition,
+        include: {
+          restaurant: {
+            select: {
+              id: true,
+              name: true,
+              tokenPrefix: true,
+              campus: true,
+              floor: true,
+              cuisine: true,
+              isOpen: true
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      });
+
+      // Format items with stall info
+      const formattedItems = items.map(item => ({
+        ...item,
+        stallId: item.restaurant.id,
+        stallName: item.restaurant.name,
+        stallInitials: item.restaurant.tokenPrefix ? item.restaurant.tokenPrefix.replace(/^KJU-|^KJC-/, "") : "STALL",
+        campus: item.restaurant.campus,
+        floor: item.restaurant.floor,
+        cuisine: item.restaurant.cuisine,
+        isStallOpen: item.restaurant.isOpen
+      }));
+
+      return NextResponse.json({ success: true, items: formattedItems, count: formattedItems.length });
     }
 
+    // 2. Single Stall Menu Query
     const resolvedId = await resolveRestaurantId(restaurantId);
 
     const items = await prisma.menuItem.findMany({
@@ -119,6 +163,7 @@ export async function POST(req: Request) {
       availableFrom,
       offerType,
       offerValue,
+      isDineInOnly,
       variants
     } = body;
 
@@ -148,6 +193,7 @@ export async function POST(req: Request) {
         availableFrom: availableFrom || "10:00 AM",
         offerType: offerType || "NONE",
         offerValue: Number(offerValue) || 0,
+        isDineInOnly: Boolean(isDineInOnly),
         variants: variants && Array.isArray(variants) && variants.length > 0 ? JSON.stringify(variants) : null
       }
     });
@@ -184,6 +230,7 @@ export async function PUT(req: Request) {
       availableFrom,
       offerType,
       offerValue,
+      isDineInOnly,
       variants
     } = body;
 
@@ -212,6 +259,7 @@ export async function PUT(req: Request) {
         ...(isBestseller !== undefined && { isBestseller: Boolean(isBestseller) }),
         ...(offerType && { offerType }),
         ...(offerValue !== undefined && { offerValue: Number(offerValue) }),
+        ...(isDineInOnly !== undefined && { isDineInOnly: Boolean(isDineInOnly) }),
         ...(variants !== undefined && { variants: Array.isArray(variants) && variants.length > 0 ? JSON.stringify(variants) : null })
       }
     });

@@ -10,6 +10,7 @@ import { useCart } from "@/context/CartContext";
 import { getStoredRestaurants, RestaurantAccount } from "@/lib/restaurants-data";
 import { getSocket } from "@/lib/socket-client";
 import { MenuItem, MenuItemVariant } from "@/app/vendor/menu/page";
+import { StudentMenuSkeleton } from "@/components/Skeletons";
 import {
   Store,
   ArrowLeft,
@@ -27,6 +28,7 @@ export default function StudentVendorPage() {
   const params = useParams();
   const router = useRouter();
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+  const [loading, setLoading] = useState(true);
   const vendorId = (params?.vendorId as string) || "vendor-1";
   const [selectedCampus, setSelectedCampus] = useState("Airport Road Campus");
 
@@ -85,9 +87,9 @@ export default function StudentVendorPage() {
       ) || list[0];
       setStall(found);
       if (found) {
-        fetchMenuFromDatabase(found.id);
+        await fetchMenuFromDatabase(found.id);
       }
-
+      setLoading(false);
     };
 
     fetchStallAndMenu();
@@ -107,8 +109,6 @@ export default function StudentVendorPage() {
       console.error(e);
     }
   }, [vendorId]);
-
-  if (!stall) return null;
 
   const filteredItems = items.filter(item => {
     if (filterVeg === "VEG" && !item.isVeg) return false;
@@ -144,15 +144,19 @@ export default function StudentVendorPage() {
       />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 lg:px-8 py-6 space-y-6">
-        <button
-          onClick={() => {
-            setIsLoadingDashboard(true);
-            router.push("/student/dashboard");
-          }}
-          className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-ink transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to All Canteen Stalls
-        </button>
+        {loading || !stall ? (
+          <StudentMenuSkeleton />
+        ) : (
+          <>
+            <button
+              onClick={() => {
+                setIsLoadingDashboard(true);
+                router.push("/student/dashboard");
+              }}
+              className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-ink transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to All Canteen Stalls
+            </button>
 
         {/* Vendor Header */}
         <div className="card-surface p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -278,6 +282,13 @@ export default function StudentVendorPage() {
                       </span>
                     )}
 
+                    {/* DINE-IN ONLY BADGE */}
+                    {item.isDineInOnly && (
+                      <span className="px-2.5 py-0.5 rounded bg-marigold/15 border border-marigold/40 text-marigold text-[10px] font-bold flex items-center gap-1">
+                        🍽️ Dine-In Only (No Parcel)
+                      </span>
+                    )}
+
                     {/* LOW STOCK WARNING BADGE */}
                     {isLowStock && (
                       <span className="px-2.5 py-0.5 rounded bg-chili-soft border border-chili/40 text-chili text-[10px] font-bold flex items-center gap-1">
@@ -356,6 +367,7 @@ export default function StudentVendorPage() {
                         stallName: stall.name,
                         stallInitials: stall.tokenPrefix.replace("KJU-", ""),
                         isVeg: item.isVeg,
+                        isDineInOnly: Boolean(item.isDineInOnly),
                         category: item.category,
                         prepTime: `${item.prepTime} mins`,
                         takeawayCharge: item.takeawayCharge || 10,
@@ -384,6 +396,7 @@ export default function StudentVendorPage() {
                           stallName: stall.name,
                           stallInitials: stall.tokenPrefix.replace("KJU-", ""),
                           isVeg: item.isVeg,
+                          isDineInOnly: Boolean(item.isDineInOnly),
                           category: item.category,
                           prepTime: `${item.prepTime} mins`,
                           takeawayCharge: item.takeawayCharge || 10,
@@ -466,6 +479,8 @@ export default function StudentVendorPage() {
             );
           })}
         </div>
+          </>
+        )}
       </main>
 
       <BottomNav cartCount={totalCount} cartTotal={totalAmount} />

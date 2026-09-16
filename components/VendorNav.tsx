@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Building2, Leaf, Menu as MenuIcon, X } from "lucide-react";
+import { LogOut, Building2, Leaf, Menu as MenuIcon, X, Printer } from "lucide-react";
 import { getActiveRestaurant, RestaurantAccount } from "@/lib/restaurants-data";
+import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
+import { hardwarePrinter } from "@/lib/hardware-printer";
 
 const NAV_LINKS = [
   { href: "/vendor/dashboard", label: "Overview" },
@@ -19,6 +21,16 @@ export function VendorNav() {
   const [currentVendor, setCurrentVendor] = useState<RestaurantAccount | null>(null);
   const [isOpenStatus, setIsOpenStatus] = useState<boolean>(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isPrinterModalOpen, setIsPrinterModalOpen] = useState(false);
+  const [printerConnected, setPrinterConnected] = useState(false);
+
+  useEffect(() => {
+    const unsub = hardwarePrinter.subscribe(() => {
+      setPrinterConnected(hardwarePrinter.getStatus().isConnected);
+    });
+    setPrinterConnected(hardwarePrinter.getStatus().isConnected);
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     if (currentVendor) {
@@ -147,6 +159,23 @@ export function VendorNav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* Thermal Printer Settings Trigger */}
+          <button
+            onClick={() => setIsPrinterModalOpen(true)}
+            title={printerConnected ? "Hardware Printer Connected (0-click silent print active)" : "Configure Thermal Receipt Printer (USB / Bluetooth)"}
+            className={`hidden sm:flex px-3 py-2 rounded border text-xs font-bold items-center gap-1.5 transition-colors cursor-pointer ${
+              printerConnected
+                ? "bg-sage-soft border-sage/40 text-sage hover:bg-sage hover:text-white"
+                : "bg-cardstock border-ink/15 text-ink-soft hover:text-ink hover:border-marigold"
+            }`}
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span className="flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${printerConnected ? "bg-sage animate-pulse" : "bg-ink-soft/40"}`} />
+              Printer {printerConnected ? "Ready" : "Setup"}
+            </span>
+          </button>
+
           <button
             onClick={toggleOpenClose}
             title={isOpenStatus ? "Click to close stall" : "Click to open stall"}
@@ -192,6 +221,16 @@ export function VendorNav() {
             </Link>
           ))}
           <button
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setIsPrinterModalOpen(true);
+            }}
+            className="w-full text-left px-3.5 py-2 rounded text-xs font-bold flex items-center gap-1.5 text-ink-soft"
+          >
+            <Printer className="w-3.5 h-3.5 text-marigold" />
+            Thermal Printer Settings ({printerConnected ? "Connected" : "Setup"})
+          </button>
+          <button
             onClick={toggleOpenClose}
             className={`w-full text-left px-3.5 py-2 rounded text-xs font-bold flex items-center gap-1.5 ${
               isOpenStatus ? "text-sage" : "text-chili"
@@ -208,6 +247,12 @@ export function VendorNav() {
           </button>
         </div>
       )}
+
+      {/* Hardware Printer Settings Modal */}
+      <PrinterSettingsModal
+        isOpen={isPrinterModalOpen}
+        onClose={() => setIsPrinterModalOpen(false)}
+      />
     </header>
   );
 }

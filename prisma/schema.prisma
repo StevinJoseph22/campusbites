@@ -93,6 +93,7 @@ model MenuItem {
   isBestseller   Boolean  @default(false)
   offerType      String   @default("NONE") // NONE, PERCENTAGE, FLAT
   offerValue     Float    @default(0)
+  isDineInOnly   Boolean  @default(false) // If true, strictly dine-in only (no parcel/takeaway packaging)
   variants       String?  // JSON array of {label, price}, e.g. Steamed/Fried/Tandoori momo styles. null = no variants, single "price" field applies.
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

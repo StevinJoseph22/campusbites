@@ -18,10 +18,12 @@ import {
   BarChart3,
   Printer
 } from "lucide-react";
+import { VendorDashboardSkeleton } from "@/components/Skeletons";
 
 export default function VendorDashboardPage() {
   const router = useRouter();
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount>(RESTAURANT_ACCOUNTS[0]);
+  const [loading, setLoading] = useState(true);
   const [activeQueueCount, setActiveQueueCount] = useState(0);
   const [readyCount, setReadyCount] = useState(0);
   const [todayOrdersCount, setTodayOrdersCount] = useState(0);
@@ -115,8 +117,11 @@ export default function VendorDashboardPage() {
 
       activeRestId = currentVendor.id;
       setActiveVendor(currentVendor);
-      fetchLiveDashboardStats(currentVendor.id);
-      fetchMenuFromDatabase(currentVendor.id);
+      await Promise.all([
+        fetchLiveDashboardStats(currentVendor.id),
+        fetchMenuFromDatabase(currentVendor.id)
+      ]);
+      setLoading(false);
     };
 
     loadVendorDetailsAndStats();
@@ -141,7 +146,11 @@ export default function VendorDashboardPage() {
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Out of stock alert */}
+        {loading ? (
+          <VendorDashboardSkeleton />
+        ) : (
+          <>
+            {/* Out of stock alert */}
         {outOfStockItems.length > 0 && (
           <div className="card-surface p-4 border-chili/30 space-y-2.5">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -261,6 +270,8 @@ export default function VendorDashboardPage() {
             </div>
           </Link>
         </div>
+          </>
+        )}
       </main>
     </div>
   );

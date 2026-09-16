@@ -86,6 +86,7 @@ export async function POST(req: Request) {
             stockCount: item.stockType === "UNLIMITED" ? 999 : Number(item.stockCount) || 50,
             stockType: item.stockType === "UNLIMITED" ? "UNLIMITED" : "COUNTED",
             available: true,
+            isDineInOnly: item.isDineInOnly === true || String(item.isDineInOnly).toLowerCase() === "true",
             availableFrom: item.availableFrom?.trim() || "10:00 AM"
           }
         })
