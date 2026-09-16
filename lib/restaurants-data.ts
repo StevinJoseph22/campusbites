@@ -15,7 +15,93 @@ export interface RestaurantAccount {
 }
 
 export const RESTAURANT_ACCOUNTS: RestaurantAccount[] = [
-  // Kristu Jayanti University (Central Campus) - CC
+  // Kristu Jayanti University (Airport Road Campus) - Live Database Canteens
+  {
+    id: "slurrppARC",
+    name: "Slurrpp",
+    tokenPrefix: "KJC-SL-ARC",
+    floor: "Ground Floor",
+    managerEmail: "slurrppARC@kristujayanti.com",
+    cuisine: "Burgers, Fast Food & Loaded Fries",
+    rating: 4.8,
+    logo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=120&h=120&fit=crop",
+    location: "Main Food Court — Stall #01",
+    type: "MIXED",
+    pinCode: "123456",
+    campus: "Airport Road Campus"
+  },
+  {
+    id: "cafezamorin1stfloorARC",
+    name: "Cafe Zamorin (1st Floor)",
+    tokenPrefix: "KJC-CZ1-ARC",
+    floor: "1st Floor",
+    managerEmail: "cafezamorin1stfloorARC@kristujayanti.com",
+    cuisine: "Beverages, Bakery & Snacks",
+    rating: 4.9,
+    logo: "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=120&h=120&fit=crop",
+    location: "Academic Block — Floor 1",
+    type: "MIXED",
+    pinCode: "123456",
+    campus: "Airport Road Campus"
+  },
+  {
+    id: "cafezamorin2ndfloorARC",
+    name: "Cafe Zamorin (2nd Floor)",
+    tokenPrefix: "KJC-CZ2-ARC",
+    floor: "2nd Floor",
+    managerEmail: "cafezamorin2ndfloorARC@kristujayanti.com",
+    cuisine: "Continental, Sandwiches & Shakes",
+    rating: 4.9,
+    logo: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=120&h=120&fit=crop",
+    location: "Academic Block — Floor 2",
+    type: "MIXED",
+    pinCode: "123456",
+    campus: "Airport Road Campus"
+  },
+  {
+    id: "ohhmomosARC",
+    name: "Ohh Momos",
+    tokenPrefix: "KJC-OM-ARC",
+    floor: "Ground Floor",
+    managerEmail: "ohhmomosARC@kristujayanti.com",
+    cuisine: "Steam, Fried & Kurkure Momos",
+    rating: 4.7,
+    logo: "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=120&h=120&fit=crop",
+    location: "Main Food Court — Stall #03",
+    type: "MIXED",
+    pinCode: "123456",
+    campus: "Airport Road Campus"
+  },
+  {
+    id: "annapradaARC",
+    name: "Annaprada",
+    tokenPrefix: "KJC-AN-ARC",
+    floor: "Ground Floor",
+    managerEmail: "annapradaARC@kristujayanti.com",
+    cuisine: "South Indian Meals, Thali & Dosa",
+    rating: 4.8,
+    logo: "https://images.unsplash.com/photo-1668236543090-82eba5ee5976?w=120&h=120&fit=crop",
+    location: "Main Dining Hall — Ground Floor",
+    type: "PURE_VEG",
+    pinCode: "123456",
+    campus: "Airport Road Campus"
+  },
+  {
+    id: "campusfeastARC",
+    name: "Campus Feast",
+    tokenPrefix: "KJC-CF-ARC",
+    floor: "Ground Floor",
+    managerEmail: "campusfeastARC@kristujayanti.com",
+    cuisine: "Biryani, Rolls & Chinese Platters",
+    rating: 4.7,
+    logo: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=120&h=120&fit=crop",
+    location: "Main Food Court — Stall #05",
+    type: "MIXED",
+    pinCode: "123456",
+    campus: "Airport Road Campus"
+  },
+
+  // Kristu Jayanti University (Central Campus)
   {
     id: "campusgrillCC",
     name: "The Campus Grill & Burger Club (Central Campus)",
@@ -43,92 +129,6 @@ export const RESTAURANT_ACCOUNTS: RestaurantAccount[] = [
     type: "PURE_VEG",
     pinCode: "123456",
     campus: "Central Campus"
-  },
-  {
-    id: "coldbrewCC",
-    name: "Cold Brew & Sandwich Bar (Central Campus)",
-    tokenPrefix: "KJU-CB-CC",
-    floor: "1st Floor",
-    managerEmail: "coldbrewCC@campusbites.edu",
-    cuisine: "Artisanal Coffee & Grilled Panini",
-    rating: 4.7,
-    logo: "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=120&h=120&fit=crop",
-    location: "Student Activity Center — Floor 1",
-    type: "PURE_VEG",
-    pinCode: "123456",
-    campus: "Central Campus"
-  },
-  {
-    id: "wokrollCC",
-    name: "Wok & Roll Noodle Hub (Central Campus)",
-    tokenPrefix: "KJU-WR-CC",
-    floor: "2nd Floor",
-    managerEmail: "wokrollCC@campusbites.edu",
-    cuisine: "Hakka Noodles, Dimsums & Manchow",
-    rating: 4.6,
-    logo: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=120&h=120&fit=crop",
-    location: "Food Plaza — Floor 2",
-    type: "MIXED",
-    pinCode: "123456",
-    campus: "Central Campus"
-  },
-
-  // Kristu Jayanti University (Airport Road Campus) - ARC
-  {
-    id: "campusgrillARC",
-    name: "The Campus Grill & Burger Club (Airport Road Campus)",
-    tokenPrefix: "KJU-TC-ARC",
-    floor: "Ground Floor",
-    managerEmail: "campusgrillARC@campusbites.edu",
-    cuisine: "Burgers, Wraps & Loaded Fries",
-    rating: 4.8,
-    logo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=120&h=120&fit=crop",
-    location: "Main Canteen Block — Stall #01",
-    type: "MIXED",
-    pinCode: "123456",
-    campus: "Airport Road Campus"
-  },
-  {
-    id: "southexpressARC",
-    name: "South Express Dosa & Tiffins (Airport Road Campus)",
-    tokenPrefix: "KJU-SE-ARC",
-    floor: "Ground Floor",
-    managerEmail: "southexpressARC@campusbites.edu",
-    cuisine: "Crispy Dosa, Idli & Filter Coffee",
-    rating: 4.9,
-    logo: "https://images.unsplash.com/photo-1668236543090-82eba5ee5976?w=120&h=120&fit=crop",
-    location: "Main Canteen Block — Stall #04",
-    type: "PURE_VEG",
-    pinCode: "123456",
-    campus: "Airport Road Campus"
-  },
-  {
-    id: "coldbrewARC",
-    name: "Cold Brew & Sandwich Bar (Airport Road Campus)",
-    tokenPrefix: "KJU-CB-ARC",
-    floor: "1st Floor",
-    managerEmail: "coldbrewARC@campusbites.edu",
-    cuisine: "Artisanal Coffee & Grilled Panini",
-    rating: 4.7,
-    logo: "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=120&h=120&fit=crop",
-    location: "Student Activity Center — Floor 1",
-    type: "PURE_VEG",
-    pinCode: "123456",
-    campus: "Airport Road Campus"
-  },
-  {
-    id: "wokrollARC",
-    name: "Wok & Roll Noodle Hub (Airport Road Campus)",
-    tokenPrefix: "KJU-WR-ARC",
-    floor: "2nd Floor",
-    managerEmail: "wokrollARC@campusbites.edu",
-    cuisine: "Hakka Noodles, Dimsums & Manchow",
-    rating: 4.6,
-    logo: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=120&h=120&fit=crop",
-    location: "Food Plaza — Floor 2",
-    type: "MIXED",
-    pinCode: "123456",
-    campus: "Airport Road Campus"
   }
 ];
 
@@ -138,7 +138,7 @@ export function getStoredRestaurants(): RestaurantAccount[] {
     const saved = localStorage.getItem("campusbites_registered_restaurants");
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.every(r => r.campus)) {
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(r => r.campus)) {
         return parsed;
       } else {
         localStorage.removeItem("campusbites_registered_restaurants");
@@ -152,7 +152,7 @@ export function getStoredRestaurants(): RestaurantAccount[] {
 
 export function registerNewRestaurant(account: RestaurantAccount): RestaurantAccount[] {
   const current = getStoredRestaurants();
-  const updated = [account, ...current];
+  const updated = [account, ...current.filter(r => r.id !== account.id)];
   try {
     localStorage.setItem("campusbites_registered_restaurants", JSON.stringify(updated));
   } catch (e) {
@@ -165,9 +165,32 @@ export function getActiveRestaurant(): RestaurantAccount {
   if (typeof window === "undefined") return RESTAURANT_ACCOUNTS[0];
   try {
     const saved = localStorage.getItem("campusbites_active_vendor_id");
+    const savedUser = localStorage.getItem("campusbites_student_reg");
+    const savedName = localStorage.getItem("campusbites_user_name");
     const list = getStoredRestaurants();
-    const found = list.find(r => r.id === saved);
-    if (found) return found;
+
+    if (saved) {
+      const found = list.find(r => 
+        r.id.toLowerCase() === saved.toLowerCase() ||
+        r.name.toLowerCase() === saved.toLowerCase() ||
+        r.tokenPrefix.toLowerCase() === saved.toLowerCase() ||
+        r.id.toLowerCase().startsWith(saved.toLowerCase())
+      );
+      if (found) return found;
+    }
+
+    if (savedUser) {
+      const found = list.find(r => 
+        r.id.toLowerCase().includes(savedUser.toLowerCase()) ||
+        r.name.toLowerCase().includes(savedUser.toLowerCase())
+      );
+      if (found) return found;
+    }
+
+    if (savedName) {
+      const found = list.find(r => r.name.toLowerCase() === savedName.toLowerCase());
+      if (found) return found;
+    }
   } catch (e) {}
   return RESTAURANT_ACCOUNTS[0];
 }
@@ -178,3 +201,4 @@ export function setActiveRestaurant(restaurantId: string) {
     localStorage.setItem("campusbites_active_vendor_id", restaurantId);
   } catch (e) {}
 }
+

@@ -158,16 +158,44 @@ export function DigitalReceiptModal({
           <span className="text-orange-400 text-base">₹{subtotal}</span>
         </div>
 
-        {/* Action Button */}
-        {onFulfill && !isFulfilled && (
+        {/* Action Buttons */}
+        <div className="space-y-2 pt-1">
           <button
-            onClick={onFulfill}
-            className="w-full btn-primary-gradient py-3.5 text-xs font-bold text-white rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
+            type="button"
+            onClick={() => {
+              import("@/lib/thermal-printer").then(({ printThermalSlip }) => {
+                printThermalSlip({
+                  tokenNumber,
+                  orderId,
+                  stallName,
+                  pickupTimeSlot,
+                  studentName,
+                  studentRegNumber,
+                  customerNotes,
+                  placedAt,
+                  status,
+                  items: items.map(i => ({
+                    name: i.name,
+                    quantity: i.quantity
+                  }))
+                });
+              });
+            }}
+            className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 border border-slate-700 transition-colors cursor-pointer"
           >
-            <Check className="w-4 h-4 stroke-[3]" />
-            <span>Verify Receipt & Mark Delivered</span>
+            <span>🖨️ Print Essae PR-55 Thermal Slip (KOT)</span>
           </button>
-        )}
+
+          {onFulfill && !isFulfilled && (
+            <button
+              onClick={onFulfill}
+              className="w-full btn-primary-gradient py-3.5 text-xs font-bold text-white rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>Verify Receipt & Mark Delivered</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

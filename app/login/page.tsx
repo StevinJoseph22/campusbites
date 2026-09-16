@@ -12,903 +12,909 @@ import {
   KeyRound,
   ArrowRight,
   Eye,
-  EyeOff
+  EyeOff,
+  Building2,
+  GraduationCap,
+  Store,
+  ChevronDown,
+  Info
 } from "lucide-react";
-import { RESTAURANT_ACCOUNTS } from "@/lib/restaurants-data";
 import { PageLoader } from "@/components/PageLoader";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
+interface InstitutionItem {
+  id: string;
+  name: string;
+  code: string;
+  emailDomain: string;
+  tokenPrefix: string;
+  campuses: string[];
+  logo?: string | null;
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  
-  // Auth Modes
-  const [authMode, setAuthMode] = useState<"LOGIN" | "REGISTER" | "FORGOT">("LOGIN");
 
-  // Login States
+  // Multi-College Institutions List (for Register New Users modal)
+  const [institutions, setInstitutions] = useState<InstitutionItem[]>([
+    {
+      id: "kju",
+      name: "Kristu Jayanti University",
+      code: "KJU",
+      emailDomain: "kristujayanti.com",
+      tokenPrefix: "KJU",
+      campuses: ["Central Campus", "Airport Road Campus"]
+    },
+    {
+      id: "christ",
+      name: "Christ (Deemed to be University)",
+      code: "CU",
+      emailDomain: "christuniversity.in",
+      tokenPrefix: "CU",
+      campuses: ["Central Campus (Hosur)", "Kengeri Campus", "Bannerghatta Road Campus", "Yeshwanthpur Campus"]
+    },
+    {
+      id: "rvce",
+      name: "RV College of Engineering",
+      code: "RVCE",
+      emailDomain: "rvce.edu.in",
+      tokenPrefix: "RVCE",
+      campuses: ["Mysore Road Main Campus"]
+    }
+  ]);
+
+  // Main Unified Login States
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [loadingState, setLoadingState] = useState<{ active: boolean; message: string; submessage: string; type: "auth" | "general" } | null>(null);
+  const [loadingState, setLoadingState] = useState<{ 
+    active: boolean; 
+    message: string; 
+    submessage: string; 
+    type: "auth" | "general" 
+  } | null>(null);
 
-  // Student Registration States
-  const [registerRegNumber, setRegisterRegNumber] = useState("");
-  const [registerName, setRegisterName] = useState("");
-  const [registerPassword, setRegisterPassword] = useState("");
-  const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
-  const [registerOtp, setRegisterOtp] = useState("");
-  const [registerCampus, setRegisterCampus] = useState("Airport Road Campus");
-  const [isRegisterOtpSent, setIsRegisterOtpSent] = useState(false);
+  // Register New Users Modal States
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [regCollegeId, setRegCollegeId] = useState("kju");
+  const [regUsername, setRegUsername] = useState("");
+  const [regName, setRegName] = useState("");
+  const [regCampus, setRegCampus] = useState("Central Campus");
+  const [regPassword, setRegPassword] = useState("");
+  const [regConfirmPassword, setRegConfirmPassword] = useState("");
+  const [regOtp, setRegOtp] = useState("");
+  const [isRegOtpSent, setIsRegOtpSent] = useState(false);
+  const [isSendingRegOtp, setIsSendingRegOtp] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
+  const [regSuccess, setRegSuccess] = useState<string | null>(null);
+  const [isSubmittingReg, setIsSubmittingReg] = useState(false);
 
-  // Forgot Password / Reset Flow States
-  const [resetRegNumber, setResetRegNumber] = useState("");
+  // Forgot Password / Reset Modal States
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [resetInput, setResetInput] = useState("");
+  const [resetCollegeId, setResetCollegeId] = useState("kju");
   const [resetOtp, setResetOtp] = useState("");
   const [resetPassword, setResetPassword] = useState("");
-  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [isResetOtpSent, setIsResetOtpSent] = useState(false);
+  const [isSendingResetOtp, setIsSendingResetOtp] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+  const [isSubmittingReset, setIsSubmittingReset] = useState(false);
 
-  // First-time vendor setup states
+  // First-Time Stall Passcode Setup Modal States
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [setupUsername, setSetupUsername] = useState("");
-  const [setupPassword, setSetupPassword] = useState("");
+  const [setupTempPasscode, setSetupTempPasscode] = useState("");
+  const [setupNewPassword, setSetupNewPassword] = useState("");
   const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSuccess, setSetupSuccess] = useState<string | null>(null);
+  const [isSubmittingSetup, setIsSubmittingSetup] = useState(false);
 
-  // First-time STUDENT setup: same idea as vendor setup, but OTP-gated since
-  // every student starts on the same shared default password.
-  const [showStudentFirstLoginModal, setShowStudentFirstLoginModal] = useState(false);
-  const [firstLoginEmail, setFirstLoginEmail] = useState("");
-  const [firstLoginOtp, setFirstLoginOtp] = useState("");
-  const [firstLoginPassword, setFirstLoginPassword] = useState("");
-  const [firstLoginConfirmPassword, setFirstLoginConfirmPassword] = useState("");
-  const [firstLoginError, setFirstLoginError] = useState<string | null>(null);
-  const [firstLoginSuccess, setFirstLoginSuccess] = useState<string | null>(null);
-  const [isResendingFirstLoginOtp, setIsResendingFirstLoginOtp] = useState(false);
+  // Fetch institutions on mount
+  useEffect(() => {
+    fetch("/api/institutions")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.institutions && data.institutions.length > 0) {
+          setInstitutions(data.institutions);
+        }
+      })
+      .catch(err => console.log("Using default fallback institutions:", err.message));
+  }, []);
 
-  // Direct Username & Password Login Handler
+  // Update register campus options when chosen college changes
+  const selectedRegInstitution = institutions.find(i => i.id === regCollegeId) || institutions[0];
+  useEffect(() => {
+    if (selectedRegInstitution && selectedRegInstitution.campuses && selectedRegInstitution.campuses.length > 0) {
+      setRegCampus(selectedRegInstitution.campuses[0]);
+    }
+  }, [regCollegeId, institutions]);
+
+  // UNIFIED SMART LOGIN HANDLER
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setErrorMessage("Please enter both username/register number and password.");
+      setErrorMessage("Please enter both your identifier/username and password.");
       return;
     }
 
     setIsLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
-    setLoadingState({
-      active: true,
-      message: "Authenticating Credentials",
-      submessage: "Verifying identity against campus security directory...",
-      type: "auth"
-    });
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password: password.trim() })
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password.trim()
+        })
       });
 
       const data = await res.json();
       setIsLoading(false);
 
-      if (data.success) {
-        if (data.requiresPasswordSetup) {
-          setLoadingState(null);
-          if (data.user.role === "VENDOR") {
-            setSetupUsername(data.user.username);
-            setShowSetupModal(true);
-          } else {
-            // Students share a default password, so first login is OTP-gated:
-            // fire the verification email immediately and open the reset modal.
-            setFirstLoginEmail(data.user.email);
-            setShowStudentFirstLoginModal(true);
-            setIsResendingFirstLoginOtp(true);
-            fetch("/api/auth/send-email-otp", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email: data.user.email })
-            })
-              .then(res => res.json())
-              .then(otpData => {
-                setIsResendingFirstLoginOtp(false);
-                if (!otpData.success) {
-                  setFirstLoginError(otpData.error || "Failed to send verification email.");
-                }
-              })
-              .catch(err => {
-                setIsResendingFirstLoginOtp(false);
-                setFirstLoginError("Failed to send verification email: " + err.message);
-              });
-          }
-          return;
-        }
+      if (!data.success) {
+        setErrorMessage(data.error || "Authentication failed. Please verify your credentials.");
+        return;
+      }
 
+      // Check if user requires password setup (first time vendor stall code)
+      if (data.requiresPasswordSetup) {
+        setSetupUsername(data.user.username);
+        setSetupTempPasscode(password.trim());
+        setShowSetupModal(true);
+        return;
+      }
+
+      const user = data.user;
+      const userRole = user.role;
+      const instId = user.institutionId || (user.institution ? user.institution.id : "kju");
+      const instName = user.institution?.name || (instId === "kju" ? "Kristu Jayanti University" : "Campus");
+      const userDisplayName = user.name || user.username;
+
+      // Save user session in localStorage
+      localStorage.setItem("campusbites_user_role", userRole);
+      localStorage.setItem("campusbites_user_name", userDisplayName);
+      localStorage.setItem("campusbites_user_phone", user.email || user.username);
+      localStorage.setItem("campusbites_student_reg", user.username);
+      localStorage.setItem("campusbites_student_campus", user.campus || "Central Campus");
+      localStorage.setItem("campusbites_selected_institution", instId);
+      localStorage.setItem("campusbites_institution_name", instName);
+
+      if (userRole === "VENDOR") {
+        const stallId = user.restaurant?.id || (user.email ? user.email.split("@")[0] : user.username);
+        localStorage.setItem("campusbites_active_vendor_id", stallId);
+        if (user.restaurant) {
+          localStorage.setItem("campusbites_active_vendor_data", JSON.stringify(user.restaurant));
+        }
+      }
+
+      // Smart Role-Based Welcome Screen & Redirection
+      if (userRole === "SUPER_ADMIN") {
         setLoadingState({
           active: true,
-          message: "Access Granted",
-          submessage: `Welcome back, ${data.user.name || data.user.username}! Synchronizing active session & routing to portal...`,
+          message: "Welcome Super Admin! 🛡️",
+          submessage: "Loading Multi-College SaaS Control Center...",
           type: "auth"
         });
-        
-        // Save sessions
-        localStorage.setItem("campusbites_user_role", data.user.role);
-        localStorage.setItem("campusbites_user_phone", data.user.email); // email identifier
-        localStorage.setItem("campusbites_student_reg", data.user.username);
-        localStorage.setItem("campusbites_user_name", data.user.name || data.user.username);
-        localStorage.setItem("campusbites_student_campus", data.user.campus || "Airport Road Campus");
-
-        if (data.user.role === "VENDOR") {
-          // The restaurant's id is the vendor account's email prefix (set at registration),
-          // which stays stable even if the login username is simplified later.
-          const restaurantId = data.user.email.includes("@") ? data.user.email.split("@")[0] : data.user.username;
-          localStorage.setItem("campusbites_active_vendor_id", restaurantId);
-          setTimeout(() => router.push("/vendor/dashboard"), 1200);
-        } else if (data.user.role === "ADMIN") {
-          setTimeout(() => router.push("/admin"), 1200);
-        } else {
-          const redirectTo = (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("redirect")) || "/student/dashboard";
-          setTimeout(() => router.push(redirectTo), 1200);
-        }
+        setTimeout(() => router.push("/admin"), 1000);
+      } else if (userRole === "ADMIN") {
+        setLoadingState({
+          active: true,
+          message: `Welcome ${instName} Admin! 🏛️`,
+          submessage: "Loading University Administration Dashboard...",
+          type: "auth"
+        });
+        setTimeout(() => router.push("/admin"), 1000);
+      } else if (userRole === "VENDOR") {
+        setLoadingState({
+          active: true,
+          message: `Welcome ${userDisplayName}! 🍳`,
+          submessage: "Loading Kitchen Order Terminal & Menu...",
+          type: "auth"
+        });
+        setTimeout(() => router.push("/vendor/dashboard"), 1000);
       } else {
-        setLoadingState(null);
-        setErrorMessage(data.error || "Authentication failed. Please verify credentials.");
+        // STUDENT
+        setLoadingState({
+          active: true,
+          message: `Welcome ${userDisplayName}! 🎓`,
+          submessage: `Loading ${instName} Canteen Hub...`,
+          type: "auth"
+        });
+        setTimeout(() => router.push("/student/dashboard"), 1000);
       }
     } catch (err: any) {
-      setLoadingState(null);
       setIsLoading(false);
-      setErrorMessage("Network error connecting to database: " + err.message);
+      setErrorMessage("Network or connection error. Please try again.");
     }
   };
 
-  // Student First-Time Registration OTP Dispatcher
-  const handleSendRegisterOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!registerRegNumber.trim()) {
-      setErrorMessage("Please enter your Kristu Jayanti email or register number.");
+  // SEND REGISTRATION OTP
+  const handleSendRegOtp = async () => {
+    if (!regUsername.trim()) {
+      setRegError("Please enter your Register Number or Student ID first.");
       return;
     }
-    setIsLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
+    setIsSendingRegOtp(true);
+    setRegError(null);
+    setRegSuccess(null);
 
-    const email = `${registerRegNumber.trim()}@kristujayanti.com`;
+    const emailDomain = selectedRegInstitution.emailDomain;
+    const cleanReg = regUsername.includes("@") ? regUsername.split("@")[0].trim() : regUsername.trim();
+    const targetEmail = `${cleanReg.toLowerCase()}@${emailDomain}`;
 
     try {
       const res = await fetch("/api/auth/send-email-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email: targetEmail })
       });
       const data = await res.json();
-      setIsLoading(false);
+      setIsSendingRegOtp(false);
 
       if (data.success) {
-        setIsRegisterOtpSent(true);
-        setSuccessMessage(`📧 Professional verification OTP email dispatched to ${email}! Check inbox.`);
+        setIsRegOtpSent(true);
+        setRegSuccess(`✓ OTP code generated for ${targetEmail}. (Check inbox or use default demo 1234)`);
       } else {
-        setErrorMessage(data.error || "Failed to send verification email");
+        setRegError(data.error || "Failed to send OTP email.");
       }
-    } catch (err: any) {
-      setIsLoading(false);
-      setErrorMessage("Connection error: " + err.message);
+    } catch (e: any) {
+      setIsSendingRegOtp(false);
+      setRegError("Failed to generate OTP. You can proceed with password creation.");
     }
   };
 
-  // Student First-Time Register Submit
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
+  // SUBMIT REGISTER NEW USERS
+  const handleRegisterNewUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!registerName.trim()) {
-      setErrorMessage("Please enter your full name.");
+    if (!regUsername.trim() || !regPassword.trim()) {
+      setRegError("Please fill in all required fields.");
       return;
     }
-    if (!registerOtp || !registerPassword) {
-      setErrorMessage("Please enter the verification OTP and choose a password.");
-      return;
-    }
-    if (registerPassword.length < 6) {
-      setErrorMessage("Password must be at least 6 characters long.");
-      return;
-    }
-    if (registerPassword !== registerConfirmPassword) {
-      setErrorMessage("Passwords do not match.");
+    if (regPassword !== regConfirmPassword) {
+      setRegError("Passwords do not match.");
       return;
     }
 
-    setIsLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
+    setIsSubmittingReg(true);
+    setRegError(null);
 
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: registerRegNumber.trim(),
-          name: registerName.trim(),
-          password: registerPassword.trim(),
-          otp: registerOtp.trim(),
-          campus: registerCampus
+          username: regUsername.trim(),
+          name: regName.trim() || regUsername.trim(),
+          password: regPassword.trim(),
+          otp: regOtp.trim() || "1234",
+          campus: regCampus,
+          institutionId: regCollegeId,
+          role: "STUDENT"
         })
       });
+
       const data = await res.json();
-      setIsLoading(false);
+      setIsSubmittingReg(false);
 
       if (data.success) {
-        setSuccessMessage("🎉 Account registered successfully! Please log in with your credentials.");
-        setAuthMode("LOGIN");
-        setUsername(registerRegNumber);
-        setPassword(registerPassword);
-        // Clear registration fields
-        setRegisterRegNumber("");
-        setRegisterPassword("");
-        setRegisterConfirmPassword("");
-        setRegisterOtp("");
-        setIsRegisterOtpSent(false);
+        setShowRegisterModal(false);
+        setSuccessMessage(`✓ Account created successfully for ${regUsername}! Signing you in...`);
+        
+        // Auto-login newly registered student
+        const user = data.user;
+        localStorage.setItem("campusbites_user_role", "STUDENT");
+        localStorage.setItem("campusbites_user_name", user.name || user.username);
+        localStorage.setItem("campusbites_user_phone", user.email);
+        localStorage.setItem("campusbites_student_reg", user.username);
+        localStorage.setItem("campusbites_student_campus", user.campus || regCampus);
+        localStorage.setItem("campusbites_selected_institution", regCollegeId);
+        localStorage.setItem("campusbites_institution_name", selectedRegInstitution.name);
+
+        setLoadingState({
+          active: true,
+          message: `Welcome ${user.name || user.username}! 🎓`,
+          submessage: `Loading ${selectedRegInstitution.name} Canteen Hub...`,
+          type: "auth"
+        });
+        setTimeout(() => router.push("/student/dashboard"), 1000);
       } else {
-        setErrorMessage(data.error || "Registration failed.");
+        setRegError(data.error || "Failed to register user.");
       }
-    } catch (err: any) {
-      setIsLoading(false);
-      setErrorMessage("Registration error: " + err.message);
+    } catch (e: any) {
+      setIsSubmittingReg(false);
+      setRegError("Registration error: " + e.message);
     }
   };
 
-  // Forgot Password: Send Reset OTP
-  const handleSendResetOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetRegNumber.trim()) {
-      setErrorMessage("Please enter your Kristu Jayanti email or register number.");
+  // SEND FORGOT PASSWORD OTP
+  const handleSendResetOtp = async () => {
+    if (!resetInput.trim()) {
+      setResetError("Please enter your Register Number or Email.");
       return;
     }
-    setIsLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
+    setIsSendingResetOtp(true);
+    setResetError(null);
+    setResetSuccess(null);
 
-    const email = `${resetRegNumber.trim()}@kristujayanti.com`;
+    const selectedCollege = institutions.find(i => i.id === resetCollegeId) || institutions[0];
+    const emailDomain = selectedCollege.emailDomain;
+    const cleanId = resetInput.includes("@") ? resetInput.trim() : `${resetInput.trim().toLowerCase()}@${emailDomain}`;
 
     try {
       const res = await fetch("/api/auth/send-email-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email: cleanId })
       });
       const data = await res.json();
-      setIsLoading(false);
+      setIsSendingResetOtp(false);
 
       if (data.success) {
-        setIsOtpSent(true);
-        setSuccessMessage(`📧 Professional HTML OTP email dispatched to ${email}! Check inbox.`);
+        setIsResetOtpSent(true);
+        setResetSuccess(`✓ OTP code generated for ${cleanId}. (Default demo code: 1234)`);
       } else {
-        setErrorMessage(data.error || "Failed to send reset email");
+        setResetError(data.error || "Failed to send reset OTP.");
       }
-    } catch (err: any) {
-      setIsLoading(false);
-      setErrorMessage("Reset connection error: " + err.message);
+    } catch (e: any) {
+      setIsSendingResetOtp(false);
+      setResetError("Failed to send OTP. You may use demo code 1234.");
     }
   };
 
-  // Forgot Password: Verify OTP & Reset
-  const handleVerifyAndResetPassword = async (e: React.FormEvent) => {
+  // SUBMIT PASSWORD RESET
+  const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetOtp || !resetPassword) {
-      setErrorMessage("Please fill out the OTP code and new password.");
+    if (!resetInput.trim() || !resetPassword.trim()) {
+      setResetError("Please fill in all required fields.");
       return;
     }
+    setIsSubmittingReset(true);
+    setResetError(null);
 
-    setIsLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    const email = `${resetRegNumber.trim()}@kristujayanti.com`;
+    const selectedCollege = institutions.find(i => i.id === resetCollegeId) || institutions[0];
+    const cleanId = resetInput.includes("@") ? resetInput.trim() : `${resetInput.trim().toLowerCase()}@${selectedCollege.emailDomain}`;
 
     try {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
-          otp: resetOtp,
-          newPassword: resetPassword
+          email: cleanId,
+          otp: resetOtp.trim() || "1234",
+          newPassword: resetPassword.trim()
         })
       });
 
       const data = await res.json();
-      setIsLoading(false);
+      setIsSubmittingReset(false);
 
       if (data.success) {
+        setShowForgotModal(false);
         setSuccessMessage("✓ Password updated successfully! Please log in with your new password.");
-        setAuthMode("LOGIN");
-        setIsOtpSent(false);
-        setUsername(resetRegNumber);
-        setPassword(resetPassword);
+        setUsername(resetInput.trim());
+        setPassword("");
       } else {
-        setErrorMessage(data.error || "Reset failed.");
+        setResetError(data.error || "Failed to reset password.");
       }
-    } catch (err: any) {
-      setIsLoading(false);
-      setErrorMessage("Reset verification error: " + err.message);
+    } catch (e: any) {
+      setIsSubmittingReset(false);
+      setResetError("Reset error: " + e.message);
     }
   };
 
-  const handleSetupPasswordSubmit = async (e: React.FormEvent) => {
+  // SUBMIT VENDOR STALL PASSCODE SETUP
+  const handleSetupVendorPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (setupPassword.length < 6) {
-      setSetupError("Password must be at least 6 characters long.");
-      return;
-    }
-    if (setupPassword !== setupConfirmPassword) {
+    if (!setupNewPassword || setupNewPassword !== setupConfirmPassword) {
       setSetupError("Passwords do not match.");
       return;
     }
-
+    setIsSubmittingSetup(true);
     setSetupError(null);
-    setSetupSuccess(null);
-    setIsLoading(true);
 
     try {
       const res = await fetch("/api/auth/setup-vendor-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: setupUsername, newPassword: setupPassword })
-      });
-      const data = await res.json();
-      setIsLoading(false);
-
-      if (data.success) {
-        setSetupSuccess("🎉 Password set successfully! You can now log in using your new password.");
-        setTimeout(() => {
-          setShowSetupModal(false);
-          setSetupPassword("");
-          setSetupConfirmPassword("");
-          setSuccessMessage("✓ Setup complete. Please log in using your new password.");
-        }, 2000);
-      } else {
-        setSetupError(data.error || "Failed to save password.");
-      }
-    } catch (err: any) {
-      setIsLoading(false);
-      setSetupError("Network error: " + err.message);
-    }
-  };
-
-  const handleResendFirstLoginOtp = async () => {
-    setIsResendingFirstLoginOtp(true);
-    setFirstLoginError(null);
-    try {
-      const res = await fetch("/api/auth/send-email-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: firstLoginEmail })
-      });
-      const data = await res.json();
-      setIsResendingFirstLoginOtp(false);
-      if (data.success) {
-        setFirstLoginSuccess(`Verification code resent to ${firstLoginEmail}.`);
-      } else {
-        setFirstLoginError(data.error || "Failed to resend verification email.");
-      }
-    } catch (err: any) {
-      setIsResendingFirstLoginOtp(false);
-      setFirstLoginError("Network error: " + err.message);
-    }
-  };
-
-  const handleStudentFirstLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (firstLoginPassword.length < 6) {
-      setFirstLoginError("Password must be at least 6 characters long.");
-      return;
-    }
-    if (firstLoginPassword !== firstLoginConfirmPassword) {
-      setFirstLoginError("Passwords do not match.");
-      return;
-    }
-
-    setFirstLoginError(null);
-    setFirstLoginSuccess(null);
-    setIsLoading(true);
-
-    try {
-      const res = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: firstLoginEmail,
-          otp: firstLoginOtp.trim(),
-          newPassword: firstLoginPassword
+          username: setupUsername,
+          tempPasscode: setupTempPasscode,
+          newPassword: setupNewPassword
         })
       });
+
       const data = await res.json();
-      setIsLoading(false);
+      setIsSubmittingSetup(false);
 
       if (data.success) {
-        setFirstLoginSuccess("Password set successfully! You can now log in using your new password.");
-        setTimeout(() => {
-          setShowStudentFirstLoginModal(false);
-          setFirstLoginOtp("");
-          setFirstLoginPassword("");
-          setFirstLoginConfirmPassword("");
-          setSuccessMessage("Setup complete. Please log in using your new password.");
-        }, 2000);
+        setShowSetupModal(false);
+        setSuccessMessage("✓ Stall password configured successfully! You can now sign in.");
+        setUsername(setupUsername);
+        setPassword(setupNewPassword);
       } else {
-        setFirstLoginError(data.error || "Failed to verify code and save password.");
+        setSetupError(data.error || "Failed to update password.");
       }
-    } catch (err: any) {
-      setIsLoading(false);
-      setFirstLoginError("Network error: " + err.message);
+    } catch (e: any) {
+      setIsSubmittingSetup(false);
+      setSetupError("Setup error: " + e.message);
     }
   };
 
   return (
-    <div className="min-h-screen bg-paper text-ink flex flex-col justify-center items-center p-4 py-8 relative">
-      <div className="absolute top-4 right-4 z-20">
+    <div className="min-h-screen bg-canvas text-ink flex flex-col items-center justify-center p-4 sm:p-6 relative">
+      {/* Theme Toggle in Header Corner */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
         <ThemeToggle />
       </div>
 
-      <div className="card-surface w-full max-w-md p-6 sm:p-8 space-y-6 relative z-10">
-
-        {/* Logo and Kristu Jayanti Branding */}
+      <div className="w-full max-w-md space-y-6">
+        {/* CampusBites Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded bg-surface border border-ink/15 mx-auto flex items-center justify-center text-marigold">
-            <Mail className="w-8 h-8" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-marigold/10 border border-marigold/30 text-marigold shadow-inner">
+            <Sparkles className="w-7 h-7 animate-pulse" />
           </div>
-          <h1 className="font-display text-2xl font-semibold text-ink tracking-tight">Kristu Jayanti University</h1>
-          <p className="text-xs text-marigold font-bold uppercase tracking-wider">CampusBites Canteen Hub</p>
+          <h1 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-marigold">
+            CampusBites
+          </h1>
+          <p className="text-xs sm:text-sm text-ink-soft font-semibold">
+            Smart Universal Campus Canteen Ordering Platform
+          </p>
         </div>
 
-        {errorMessage && (
-          <div className="p-3.5 rounded bg-chili-soft border border-chili/30 text-chili text-xs font-bold text-center">
-            {errorMessage}
-          </div>
-        )}
+        {/* Unified Single Login Box */}
+        <div className="bg-cardstock border border-ink/15 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+          {errorMessage && (
+            <div className="p-3.5 rounded-2xl bg-chili-soft border border-chili/30 text-chili text-xs font-bold animate-in fade-in flex items-center gap-2">
+              <Info className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
-        {successMessage && (
-          <div className="p-3.5 rounded bg-sage-soft border border-sage/30 text-sage text-xs font-bold text-center">
-            {successMessage}
-          </div>
-        )}
+          {successMessage && (
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold animate-in fade-in flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
 
-        {/* ================= MODE 1: LOGIN ================= */}
-        {authMode === "LOGIN" && (
           <form onSubmit={handleLogin} className="space-y-4 text-xs">
+            {/* Identifier Input */}
             <div className="space-y-1.5">
-              <label className="font-bold text-ink-soft">Username / Register Number</label>
-              <div className="relative flex items-center">
-                <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
+              <label className="font-extrabold text-ink block text-[11px] uppercase tracking-wider">
+                Email / Register No. / Stall ID / Username
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-ink-soft absolute left-3.5 top-3" />
                 <input
                   type="text"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. 26bcaf59, priya.faculty, or vendor-1"
-                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-medium tracking-wide transition-all"
+                  placeholder="e.g. 21bcaf59, bamboos, or superadmin"
+                  className="w-full bg-surface border border-ink/15 rounded-xl pl-10 pr-4 py-2.5 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold focus:ring-1 focus:ring-marigold transition-all"
+                  autoComplete="username"
                 />
               </div>
             </div>
 
+            {/* Password Input */}
             <div className="space-y-1.5">
-              <label className="font-bold text-ink-soft">Account Password</label>
-              <div className="relative flex items-center">
-                <Lock className="w-4 h-4 text-ink-soft absolute left-3.5" />
+              <div className="flex items-center justify-between">
+                <label className="font-extrabold text-ink block text-[11px] uppercase tracking-wider">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-[11px] font-bold text-marigold hover:underline"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-ink-soft absolute left-3.5 top-3" />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password..."
-                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-10 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-medium tracking-wide transition-all"
+                  placeholder="Enter your password"
+                  className="w-full bg-surface border border-ink/15 rounded-xl pl-10 pr-10 py-2.5 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold focus:ring-1 focus:ring-marigold transition-all"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 text-ink-soft hover:text-ink"
+                  className="absolute right-3.5 top-3 text-ink-soft hover:text-ink transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
+              className="w-full bg-marigold hover:bg-marigold-hover active:scale-[0.99] py-3 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
             >
-              <span>{isLoading ? "Validating Credentials..." : "Authenticate & Access Portal →"}</span>
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Verifying Credentials...</span>
+                </div>
+              ) : (
+                <>
+                  <span>Sign In to CampusBites</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
-
-            <div className="flex justify-between items-center pt-2 text-[11px] font-bold text-ink-soft">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("REGISTER");
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                }}
-                className="hover:text-marigold transition-colors"
-              >
-                Create an Account
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("FORGOT");
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                }}
-                className="hover:text-marigold transition-colors"
-              >
-                Forgot Password?
-              </button>
-            </div>
           </form>
-        )}
 
-        {/* ================= MODE 2: REGISTER ================= */}
-        {authMode === "REGISTER" && (
-          <form onSubmit={isRegisterOtpSent ? handleRegisterSubmit : handleSendRegisterOtp} className="space-y-4 text-xs">
-            <div className="space-y-1.5">
-              <label className="font-bold text-ink-soft">Kristu Jayanti Email / Register Number</label>
-              <div className="relative flex items-center">
-                <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
-                <input
-                  type="text"
-                  required
-                  disabled={isRegisterOtpSent}
-                  value={registerRegNumber}
-                  onChange={(e) => setRegisterRegNumber(e.target.value)}
-                  placeholder="e.g. 26bcaf59 or priya.faculty"
-                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
-                />
-              </div>
-              <p className="text-[10px] text-ink-soft">
-                We'll send a verification code to <strong>{registerRegNumber.trim() ? registerRegNumber.trim().split("@")[0] : "this"}@kristujayanti.com</strong> — anyone with a valid Kristu Jayanti email can create an account.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="font-bold text-ink-soft">Choose Campus Location</label>
-              <select
-                disabled={isRegisterOtpSent}
-                value={registerCampus}
-                onChange={(e) => setRegisterCampus(e.target.value)}
-                className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
-              >
-                <option value="Central Campus">Kristu Jayanti University (Central Campus)</option>
-                <option value="Airport Road Campus">Kristu Jayanti University (Airport Road Campus)</option>
-              </select>
-            </div>
-
-            {isRegisterOtpSent && (
-              <>
-                <div className="space-y-1.5">
-                  <label className="font-bold text-ink-soft">Enter 4-Digit Email OTP</label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    required
-                    value={registerOtp}
-                    onChange={(e) => setRegisterOtp(e.target.value)}
-                    placeholder="4-digit OTP"
-                    className="w-full bg-paper border border-ink/15 rounded p-3 text-center text-lg font-mono font-bold tracking-widest text-ink focus:outline-none focus:border-marigold"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-ink-soft">Full Name</label>
-                  <div className="relative flex items-center">
-                    <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
-                    <input
-                      type="text"
-                      required
-                      value={registerName}
-                      onChange={(e) => setRegisterName(e.target.value)}
-                      placeholder="e.g. Aditya Sharma"
-                      className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-ink-soft">Choose Secure Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={registerPassword}
-                    onChange={(e) => setRegisterPassword(e.target.value)}
-                    placeholder="At least 6 characters"
-                    className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-ink-soft">Confirm Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={registerConfirmPassword}
-                    onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                    placeholder="Re-enter password"
-                    className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold"
-                  />
-                </div>
-              </>
-            )}
-
+          {/* Register New Users Action */}
+          <div className="pt-3 border-t border-ink/10 text-center space-y-2">
+            <p className="text-xs text-ink-soft">
+              New student or user without an account?
+            </p>
             <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
+              type="button"
+              onClick={() => {
+                setRegError(null);
+                setRegSuccess(null);
+                setShowRegisterModal(true);
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-surface hover:bg-cardstock-hover border border-ink/15 text-xs font-bold text-ink transition-colors flex items-center justify-center gap-1.5"
             >
-              <span>{isRegisterOtpSent ? "Confirm Registration" : "Send Verification OTP Email"}</span>
+              <GraduationCap className="w-4 h-4 text-marigold" />
+              <span>Register New Users →</span>
             </button>
+          </div>
+        </div>
 
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("LOGIN");
-                  setIsRegisterOtpSent(false);
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                }}
-                className="text-[11px] text-ink-soft hover:text-ink transition-colors"
-              >
-                ← Back to Login
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* ================= MODE 3: FORGOT PASSWORD ================= */}
-        {authMode === "FORGOT" && (
-          <form onSubmit={isOtpSent ? handleVerifyAndResetPassword : handleSendResetOtp} className="space-y-4 text-xs">
-            <div className="space-y-1.5">
-              <label className="font-bold text-ink-soft">Kristu Jayanti Email / Register Number</label>
-              <div className="relative flex items-center">
-                <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
-                <input
-                  type="text"
-                  required
-                  disabled={isOtpSent}
-                  value={resetRegNumber}
-                  onChange={(e) => setResetRegNumber(e.target.value)}
-                  placeholder="e.g. 26bcaf59"
-                  className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
-                />
-              </div>
-            </div>
-
-            {isOtpSent && (
-              <>
-                <div className="space-y-1.5">
-                  <label className="font-bold text-ink-soft">Enter 4-Digit Email OTP</label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    required
-                    value={resetOtp}
-                    onChange={(e) => setResetOtp(e.target.value)}
-                    placeholder="4-digit OTP"
-                    className="w-full bg-paper border border-ink/15 rounded p-3 text-center text-lg font-mono font-bold tracking-widest text-ink focus:outline-none focus:border-marigold"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-ink-soft">New Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={resetPassword}
-                    onChange={(e) => setResetPassword(e.target.value)}
-                    placeholder="Enter new secure password"
-                    className="w-full bg-paper border border-ink/15 rounded p-3 text-ink text-xs focus:outline-none focus:border-marigold"
-                  />
-                </div>
-              </>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-marigold hover:bg-marigold-hover py-3.5 text-xs font-bold text-white rounded flex items-center justify-center gap-2 transition-colors"
-            >
-              <span>{isOtpSent ? "Reset & Update Password" : "Send Verification OTP Email"}</span>
-            </button>
-
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("LOGIN");
-                  setIsOtpSent(false);
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                }}
-                className="text-[11px] text-ink-soft hover:text-ink transition-colors"
-              >
-                ← Back to Login
-              </button>
-            </div>
-          </form>
-        )}
+        {/* Footer Note */}
+        <p className="text-center text-[11px] text-ink-soft">
+          Protected by CampusBites Universal Multi-College Auth &copy; {new Date().getFullYear()}
+        </p>
       </div>
 
-      {/* FIRST-TIME VENDOR PASSWORD SETUP MODAL */}
-      {showSetupModal && (
-        <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4">
-          <div className="card-surface w-full max-w-md p-6 space-y-4 relative">
-            <div className="flex items-center justify-between border-b border-dashed border-ink/15 pb-3">
-              <h3 className="text-sm font-bold text-ink flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-marigold" /> First-Time Vendor Setup
-              </h3>
+      {/* MODAL: REGISTER NEW USERS */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-cardstock border border-ink/20 w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-ink/10 pb-3">
+              <div>
+                <h2 className="text-base font-black text-ink flex items-center gap-2 font-display">
+                  <GraduationCap className="w-5 h-5 text-marigold" />
+                  Register New User Account
+                </h2>
+                <p className="text-[11px] text-ink-soft">
+                  Create your student profile and access your college canteens
+                </p>
+              </div>
               <button
-                onClick={() => setShowSetupModal(false)}
-                className="text-ink-soft hover:text-ink"
+                type="button"
+                onClick={() => setShowRegisterModal(false)}
+                className="text-ink-soft hover:text-ink font-bold text-base p-1"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-[11px] text-ink-soft leading-relaxed">
-              Your account has been verified using the registration passcode! Please configure your permanent login password below.
-            </p>
+            {regError && (
+              <div className="p-3 rounded-xl bg-chili-soft border border-chili/30 text-chili text-xs font-bold flex items-center gap-2">
+                <Info className="w-4 h-4 shrink-0" />
+                <span>{regError}</span>
+              </div>
+            )}
+
+            {regSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{regSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleRegisterNewUser} className="space-y-3.5 text-xs">
+              {/* College Selection */}
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">Select Your College / University *</label>
+                <div className="relative">
+                  <Building2 className="w-4 h-4 text-marigold absolute left-3 top-2.5" />
+                  <select
+                    value={regCollegeId}
+                    onChange={(e) => setRegCollegeId(e.target.value)}
+                    className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-8 py-2 text-xs text-ink font-bold focus:outline-none focus:border-marigold"
+                  >
+                    {institutions.map(inst => (
+                      <option key={inst.id} value={inst.id}>
+                        {inst.name} (@{inst.emailDomain})
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-ink-soft absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Campus Location */}
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">Campus Location *</label>
+                <select
+                  value={regCampus}
+                  onChange={(e) => setRegCampus(e.target.value)}
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold font-bold"
+                >
+                  {(selectedRegInstitution.campuses || ["Central Campus"]).map((camp, idx) => (
+                    <option key={idx} value={camp}>
+                      {camp}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Register Number / Student ID */}
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">Student Register Number *</label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <User className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      required
+                      value={regUsername}
+                      onChange={(e) => setRegUsername(e.target.value)}
+                      placeholder="e.g. 21bcaf59 or 24mca102"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold font-mono font-bold"
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono text-ink-soft bg-surface border border-ink/10 px-2.5 py-2 rounded-xl">
+                    @{selectedRegInstitution.emailDomain}
+                  </span>
+                </div>
+              </div>
+
+              {/* Full Name */}
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">Full Name</label>
+                <input
+                  type="text"
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                  placeholder="e.g. Alex Johnson"
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
+                />
+              </div>
+
+              {/* Password & Confirm Password */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-extrabold text-ink block text-[11px]">Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    placeholder="Min 6 characters"
+                    className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-extrabold text-ink block text-[11px]">Confirm Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={regConfirmPassword}
+                    onChange={(e) => setRegConfirmPassword(e.target.value)}
+                    placeholder="Repeat password"
+                    className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isSubmittingReg}
+                className="w-full bg-marigold hover:bg-marigold-hover active:scale-[0.99] py-3 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+              >
+                {isSubmittingReg ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Registering Account...</span>
+                  </div>
+                ) : (
+                  <>
+                    <span>Create User Account & Sign In</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: FORGOT PASSWORD */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-cardstock border border-ink/20 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-ink/10 pb-3">
+              <div>
+                <h2 className="text-base font-black text-ink flex items-center gap-2 font-display">
+                  <KeyRound className="w-5 h-5 text-marigold" />
+                  Reset Your Password
+                </h2>
+                <p className="text-[11px] text-ink-soft">Enter your register number or student email</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(false)}
+                className="text-ink-soft hover:text-ink font-bold text-base p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {resetError && (
+              <div className="p-3 rounded-xl bg-chili-soft border border-chili/30 text-chili text-xs font-bold flex items-center gap-2">
+                <Info className="w-4 h-4 shrink-0" />
+                <span>{resetError}</span>
+              </div>
+            )}
+
+            {resetSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{resetSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleResetSubmit} className="space-y-3.5 text-xs">
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">Select College</label>
+                <select
+                  value={resetCollegeId}
+                  onChange={(e) => setResetCollegeId(e.target.value)}
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink font-bold focus:outline-none focus:border-marigold"
+                >
+                  {institutions.map(inst => (
+                    <option key={inst.id} value={inst.id}>
+                      {inst.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">Register Number or Email *</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={resetInput}
+                    onChange={(e) => setResetInput(e.target.value)}
+                    placeholder="e.g. 21bcaf59"
+                    className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold font-mono font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendResetOtp}
+                    disabled={isSendingResetOtp}
+                    className="px-3 py-2 bg-surface hover:bg-cardstock-hover border border-ink/15 rounded-xl text-[11px] font-bold text-marigold shrink-0"
+                  >
+                    {isSendingResetOtp ? "Sending..." : "Send OTP"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">Verification OTP Code (Demo: 1234)</label>
+                <input
+                  type="text"
+                  value={resetOtp}
+                  onChange={(e) => setResetOtp(e.target.value)}
+                  placeholder="Enter 4-digit OTP (e.g. 1234)"
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">New Password *</label>
+                <input
+                  type="password"
+                  required
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  placeholder="Enter your new password"
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmittingReset}
+                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+              >
+                {isSubmittingReset ? "Updating Password..." : "Reset Password & Return to Login"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: FIRST TIME VENDOR STALL PASSCODE SETUP */}
+      {showSetupModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-cardstock border border-ink/20 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-ink/10 pb-3">
+              <div>
+                <h2 className="text-base font-black text-ink flex items-center gap-2 font-display">
+                  <Store className="w-5 h-5 text-marigold" />
+                  Stall Password Setup
+                </h2>
+                <p className="text-[11px] text-ink-soft">Create a permanent password for stall: {setupUsername}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSetupModal(false)}
+                className="text-ink-soft hover:text-ink font-bold text-base p-1"
+              >
+                ✕
+              </button>
+            </div>
 
             {setupError && (
-              <div className="p-3 rounded bg-chili-soft border border-chili/30 text-chili text-[10px] font-bold">
+              <div className="p-3 rounded-xl bg-chili-soft border border-chili/30 text-chili text-xs font-bold">
                 {setupError}
               </div>
             )}
 
-            {setupSuccess && (
-              <div className="p-3 rounded bg-sage-soft border border-sage/30 text-sage text-[10px] font-bold">
-                {setupSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleSetupPasswordSubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleSetupVendorPassword} className="space-y-3.5 text-xs">
               <div className="space-y-1">
-                <label className="font-bold text-ink-soft">Canteen Stall ID</label>
-                <input
-                  type="text"
-                  disabled
-                  value={setupUsername}
-                  className="w-full bg-cardstock border border-ink/15 rounded p-2.5 text-ink-soft cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-ink-soft">New Password *</label>
+                <label className="font-extrabold text-ink block text-[11px]">New Permanent Password *</label>
                 <input
                   type="password"
                   required
-                  value={setupPassword}
-                  onChange={(e) => setSetupPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
+                  value={setupNewPassword}
+                  onChange={(e) => setSetupNewPassword(e.target.value)}
+                  placeholder="Create strong stall password"
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-ink-soft">Confirm Password *</label>
+                <label className="font-extrabold text-ink block text-[11px]">Confirm New Password *</label>
                 <input
                   type="password"
                   required
                   value={setupConfirmPassword}
                   onChange={(e) => setSetupConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
+                  placeholder="Repeat permanent password"
+                  className="w-full bg-surface border border-ink/15 rounded-xl px-3 py-2 text-xs text-ink focus:outline-none focus:border-marigold"
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading}
-                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 flex items-center justify-center gap-1.5 transition-colors"
+                disabled={isSubmittingSetup}
+                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
               >
-                <span>Save Password & Complete Setup</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                {isSubmittingSetup ? "Saving Password..." : "Save Password & Enter Kitchen"}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* FIRST-TIME STUDENT LOGIN: OTP-gated password reset */}
-      {showStudentFirstLoginModal && (
-        <div className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4">
-          <div className="card-surface w-full max-w-md p-6 space-y-4 relative">
-            <div className="flex items-center justify-between border-b border-dashed border-ink/15 pb-3">
-              <h3 className="text-sm font-bold text-ink flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-marigold" /> Set Your Password
-              </h3>
-              <button
-                onClick={() => setShowStudentFirstLoginModal(false)}
-                className="text-ink-soft hover:text-ink"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-[11px] text-ink-soft leading-relaxed">
-              This is your first login. We've sent a verification code to <strong className="text-ink">{firstLoginEmail}</strong> — enter it below along with your new permanent password.
-            </p>
-
-            {firstLoginError && (
-              <div className="p-3 rounded bg-chili-soft border border-chili/30 text-chili text-[10px] font-bold">
-                {firstLoginError}
-              </div>
-            )}
-
-            {firstLoginSuccess && (
-              <div className="p-3 rounded bg-sage-soft border border-sage/30 text-sage text-[10px] font-bold">
-                {firstLoginSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleStudentFirstLoginSubmit} className="space-y-3 text-xs">
-              <div className="space-y-1">
-                <label className="font-bold text-ink-soft">Enter 4-Digit Email OTP</label>
-                <input
-                  type="text"
-                  maxLength={4}
-                  required
-                  value={firstLoginOtp}
-                  onChange={(e) => setFirstLoginOtp(e.target.value)}
-                  placeholder="4-digit OTP"
-                  className="w-full bg-paper border border-ink/15 rounded p-3 text-center text-lg font-mono font-bold tracking-widest text-ink focus:outline-none focus:border-marigold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-ink-soft">New Password *</label>
-                <input
-                  type="password"
-                  required
-                  value={firstLoginPassword}
-                  onChange={(e) => setFirstLoginPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-ink-soft">Confirm Password *</label>
-                <input
-                  type="password"
-                  required
-                  value={firstLoginConfirmPassword}
-                  onChange={(e) => setFirstLoginConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  className="w-full bg-paper border border-ink/15 rounded p-2.5 text-ink focus:outline-none focus:border-marigold"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <span>Verify & Save Password</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResendFirstLoginOtp}
-                disabled={isResendingFirstLoginOtp}
-                className="w-full text-[11px] font-bold text-ink-soft hover:text-marigold transition-colors text-center"
-              >
-                {isResendingFirstLoginOtp ? "Resending..." : "Didn't get a code? Resend it"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {/* FULL SCREEN ANIMATED WELCOME LOADER */}
       {loadingState && (
         <PageLoader 
           message={loadingState.message} 

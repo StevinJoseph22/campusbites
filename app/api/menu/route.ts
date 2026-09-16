@@ -3,6 +3,67 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+// Smart resolution of restaurant ID to match existing database records
+async function resolveRestaurantId(rawId: string, autoCreateOnMissing = false): Promise<string> {
+  const trimmed = rawId.trim();
+
+  // 1. Direct match by ID
+  const direct = await prisma.restaurant.findUnique({
+    where: { id: trimmed }
+  });
+  if (direct) return direct.id;
+
+  // 2. Case-insensitive match on ID, Name, or TokenPrefix
+  const byInsensitive = await prisma.restaurant.findFirst({
+    where: {
+      OR: [
+        { id: { equals: trimmed, mode: "insensitive" } },
+        { name: { equals: trimmed, mode: "insensitive" } },
+        { tokenPrefix: { equals: trimmed, mode: "insensitive" } }
+      ]
+    }
+  });
+  if (byInsensitive) return byInsensitive.id;
+
+  // 3. Prefix/Contains match on ID or Name
+  const byFuzzy = await prisma.restaurant.findFirst({
+    where: {
+      OR: [
+        { id: { startsWith: trimmed, mode: "insensitive" } },
+        { name: { contains: trimmed, mode: "insensitive" } }
+      ]
+    }
+  });
+  if (byFuzzy) return byFuzzy.id;
+
+  // 4. Auto-create if writing to prevent foreign key constraint violation
+  if (autoCreateOnMissing) {
+    try {
+      const created = await prisma.restaurant.create({
+        data: {
+          id: trimmed,
+          name: trimmed.charAt(0).toUpperCase() + trimmed.slice(1),
+          tokenPrefix: `KJC-${trimmed.substring(0, 3).toUpperCase()}`,
+          floor: "Ground Floor",
+          cuisine: "Multi-Cuisine Specialties",
+          logo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=120&h=120&fit=crop",
+          location: "Main Food Court",
+          type: "MIXED",
+          campus: "Airport Road Campus",
+          institutionId: "kju",
+          pinCodeHash: "123456"
+        }
+      });
+      return created.id;
+    } catch (e) {
+      console.warn("Auto create restaurant fallback encountered error:", e);
+    }
+  }
+
+
+  return trimmed;
+}
+
 // Fetch menu items for a restaurant stall
 export async function GET(req: Request) {
   try {
@@ -16,12 +77,19 @@ export async function GET(req: Request) {
       );
     }
 
+    const resolvedId = await resolveRestaurantId(restaurantId);
+
     const items = await prisma.menuItem.findMany({
-      where: { restaurantId },
+      where: {
+        OR: [
+          { restaurantId },
+          { restaurantId: resolvedId }
+        ]
+      },
       orderBy: { createdAt: "desc" }
     });
 
-    return NextResponse.json({ success: true, items });
+    return NextResponse.json({ success: true, items, resolvedRestaurantId: resolvedId });
   } catch (error: any) {
     console.error("GET menu items error:", error);
     return NextResponse.json(
@@ -61,9 +129,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const targetRestaurantId = await resolveRestaurantId(restaurantId, true);
+
     const newItem = await prisma.menuItem.create({
       data: {
-        restaurantId,
+        restaurantId: targetRestaurantId,
         name,
         description: description || "",
         price: Number(price),
@@ -91,6 +161,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
 
 // Update a menu item (details or stock)
 export async function PUT(req: Request) {

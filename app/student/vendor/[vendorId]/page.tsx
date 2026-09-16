@@ -60,7 +60,12 @@ export default function StudentVendorPage() {
         const res = await fetch(`/api/restaurants?t=${Date.now()}`);
         const data = await res.json();
         if (data.success && data.restaurants) {
-          const found = data.restaurants.find((r: any) => r.id === vendorId);
+          const found = data.restaurants.find((r: any) => 
+            r.id.toLowerCase() === vendorId.toLowerCase() ||
+            r.name.toLowerCase() === vendorId.toLowerCase() ||
+            r.tokenPrefix.toLowerCase() === vendorId.toLowerCase() ||
+            r.id.toLowerCase().startsWith(vendorId.toLowerCase())
+          );
           if (found) {
             setStall(found);
             fetchMenuFromDatabase(found.id);
@@ -73,11 +78,16 @@ export default function StudentVendorPage() {
 
       // Local storage fallback
       const list = getStoredRestaurants();
-      const found = list.find(r => r.id === vendorId) || list[0];
+      const found = list.find(r => 
+        r.id.toLowerCase() === vendorId.toLowerCase() ||
+        r.name.toLowerCase() === vendorId.toLowerCase() ||
+        r.id.toLowerCase().startsWith(vendorId.toLowerCase())
+      ) || list[0];
       setStall(found);
       if (found) {
         fetchMenuFromDatabase(found.id);
       }
+
     };
 
     fetchStallAndMenu();

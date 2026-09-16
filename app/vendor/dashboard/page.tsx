@@ -15,7 +15,8 @@ import {
   ChefHat,
   AlertTriangle,
   Building2,
-  BarChart3
+  BarChart3,
+  Printer
 } from "lucide-react";
 
 export default function VendorDashboardPage() {
@@ -83,21 +84,36 @@ export default function VendorDashboardPage() {
       }
     };
 
+    let activeRestId: string | null = null;
+
     const loadVendorDetailsAndStats = async () => {
+      const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
+      const currentUsername = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
+      const currentName = typeof window !== "undefined" ? localStorage.getItem("campusbites_user_name") : null;
+
       let currentVendor = getActiveRestaurant();
       try {
         const res = await fetch("/api/restaurants");
         const data = await res.json();
-        if (data.success && data.restaurants && currentId) {
-          const found = data.restaurants.find((r: any) => r.id === currentId);
+        if (data.success && data.restaurants && data.restaurants.length > 0) {
+          const found = data.restaurants.find((r: any) => 
+            (currentId && (r.id.toLowerCase() === currentId.toLowerCase() || r.name.toLowerCase() === currentId.toLowerCase() || r.tokenPrefix.toLowerCase() === currentId.toLowerCase() || r.id.toLowerCase().startsWith(currentId.toLowerCase()))) ||
+            (currentUsername && (r.id.toLowerCase().includes(currentUsername.toLowerCase()) || r.name.toLowerCase().includes(currentUsername.toLowerCase()))) ||
+            (currentName && r.name.toLowerCase() === currentName.toLowerCase())
+          );
           if (found) {
             currentVendor = found;
+            localStorage.setItem("campusbites_active_vendor_id", found.id);
+          } else if (!currentId && data.restaurants[0]) {
+            currentVendor = data.restaurants[0];
+            localStorage.setItem("campusbites_active_vendor_id", currentVendor.id);
           }
         }
       } catch (e) {
         console.error("Failed to fetch live restaurant details for dashboard:", e);
       }
 
+      activeRestId = currentVendor.id;
       setActiveVendor(currentVendor);
       fetchLiveDashboardStats(currentVendor.id);
       fetchMenuFromDatabase(currentVendor.id);
@@ -105,14 +121,16 @@ export default function VendorDashboardPage() {
 
     loadVendorDetailsAndStats();
 
-    if (currentId) {
-      const interval = setInterval(() => {
-        fetchLiveDashboardStats(currentId);
-        fetchMenuFromDatabase(currentId);
-      }, 3000);
-      return () => clearInterval(interval);
-    }
+    const interval = setInterval(() => {
+      const targetId = activeRestId || (typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null);
+      if (targetId) {
+        fetchLiveDashboardStats(targetId);
+        fetchMenuFromDatabase(targetId);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
   }, [router]);
+
 
   const outOfStockItems = menuItems.filter(
     item => (!item.available || item.stockCount <= 0) && !acknowledgedItems.includes(item.id)
@@ -212,19 +230,35 @@ export default function VendorDashboardPage() {
         </div>
 
         {/* Quick links */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Link href="/vendor/orders" className="card-surface hover:bg-cardstock-hover transition-colors p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
+              <Printer className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-sm font-bold text-ink block">Live Queue</span>
+              <span className="text-[10px] text-ink-soft">Essae PR-55 Auto-Print</span>
+            </div>
+          </Link>
+
           <Link href="/vendor/menu" className="card-surface hover:bg-cardstock-hover transition-colors p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded bg-marigold/10 text-marigold flex items-center justify-center shrink-0">
               <UtensilsCrossed className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-ink">Menu</span>
+            <div>
+              <span className="text-sm font-bold text-ink block">Menu</span>
+              <span className="text-[10px] text-ink-soft">Dishes & Pricing</span>
+            </div>
           </Link>
 
           <Link href="/vendor/sales" className="card-surface hover:bg-cardstock-hover transition-colors p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded bg-marigold/10 text-marigold flex items-center justify-center shrink-0">
               <BarChart3 className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-ink">Sales</span>
+            <div>
+              <span className="text-sm font-bold text-ink block">Sales & Payouts</span>
+              <span className="text-[10px] text-ink-soft">Daily Revenue Logs</span>
+            </div>
           </Link>
         </div>
       </main>
