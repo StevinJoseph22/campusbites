@@ -59,17 +59,27 @@ export function VendorNav() {
       }
     }
 
-    const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
-
     const loadVendorDetails = async () => {
+      const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
+      const currentUsername = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
+      const currentName = typeof window !== "undefined" ? localStorage.getItem("campusbites_user_name") : null;
+
       let active = getActiveRestaurant();
       try {
         const res = await fetch("/api/restaurants");
         const data = await res.json();
-        if (data.success && data.restaurants && currentId) {
-          const found = data.restaurants.find((r: any) => r.id === currentId);
+        if (data.success && data.restaurants && data.restaurants.length > 0) {
+          const found = data.restaurants.find((r: any) => 
+            (currentId && (r.id.toLowerCase() === currentId.toLowerCase() || r.name.toLowerCase() === currentId.toLowerCase() || r.tokenPrefix.toLowerCase() === currentId.toLowerCase() || r.id.toLowerCase().startsWith(currentId.toLowerCase()))) ||
+            (currentUsername && (r.id.toLowerCase().includes(currentUsername.toLowerCase()) || r.name.toLowerCase().includes(currentUsername.toLowerCase()))) ||
+            (currentName && r.name.toLowerCase() === currentName.toLowerCase())
+          );
           if (found) {
             active = found;
+            localStorage.setItem("campusbites_active_vendor_id", found.id);
+          } else if (!currentId && data.restaurants[0]) {
+            active = data.restaurants[0];
+            localStorage.setItem("campusbites_active_vendor_id", active.id);
           }
         }
       } catch (e) {
@@ -80,6 +90,7 @@ export function VendorNav() {
 
     loadVendorDetails();
   }, [router]);
+
 
   const handleSignOut = () => {
     localStorage.removeItem("campusbites_user_role");

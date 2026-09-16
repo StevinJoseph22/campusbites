@@ -220,8 +220,30 @@ export async function GET(req: Request) {
       );
     }
 
+    // Resolve restaurant details for broader ID/name matching
+    const matchedRest = await prisma.restaurant.findFirst({
+      where: {
+        OR: [
+          { id: { equals: restaurantId, mode: "insensitive" } },
+          { name: { equals: restaurantId, mode: "insensitive" } },
+          { id: { startsWith: restaurantId, mode: "insensitive" } }
+        ]
+      }
+    });
+
+    const targetIds = Array.from(new Set([
+      restaurantId,
+      matchedRest?.id,
+      matchedRest?.name
+    ].filter(Boolean) as string[]));
+
     const items = await prisma.orderItem.findMany({
-      where: { stallId: restaurantId },
+      where: {
+        OR: [
+          { stallId: { in: targetIds } },
+          ...(matchedRest ? [{ stallName: { equals: matchedRest.name, mode: "insensitive" as const } }] : [])
+        ]
+      },
       orderBy: { createdAt: "desc" },
       include: { order: true }
     });
@@ -244,6 +266,7 @@ export async function GET(req: Request) {
     }));
 
     return NextResponse.json({ success: true, orders: mapped });
+
   } catch (error: any) {
     console.error("GET orders error:", error);
     return NextResponse.json(

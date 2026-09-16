@@ -41,6 +41,7 @@ import {
   Upload,
   Package
 } from "lucide-react";
+import { ImageDropzone } from "@/components/ImageDropzone";
 
 export default function VendorMenuPage() {
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount | null>(null);
@@ -204,17 +205,27 @@ export default function VendorMenuPage() {
   };
 
   useEffect(() => {
-    const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
-
     const loadVendorDetailsAndMenu = async () => {
+      const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
+      const currentUsername = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
+      const currentName = typeof window !== "undefined" ? localStorage.getItem("campusbites_user_name") : null;
+
       let currentVendor = getActiveRestaurant();
       try {
         const res = await fetch("/api/restaurants");
         const data = await res.json();
-        if (data.success && data.restaurants && currentId) {
-          const found = data.restaurants.find((r: any) => r.id === currentId);
+        if (data.success && data.restaurants && data.restaurants.length > 0) {
+          const found = data.restaurants.find((r: any) => 
+            (currentId && (r.id.toLowerCase() === currentId.toLowerCase() || r.name.toLowerCase() === currentId.toLowerCase() || r.tokenPrefix.toLowerCase() === currentId.toLowerCase() || r.id.toLowerCase().startsWith(currentId.toLowerCase()))) ||
+            (currentUsername && (r.id.toLowerCase().includes(currentUsername.toLowerCase()) || r.name.toLowerCase().includes(currentUsername.toLowerCase()))) ||
+            (currentName && r.name.toLowerCase() === currentName.toLowerCase())
+          );
           if (found) {
             currentVendor = found;
+            localStorage.setItem("campusbites_active_vendor_id", found.id);
+          } else if (!currentId && data.restaurants[0]) {
+            currentVendor = data.restaurants[0];
+            localStorage.setItem("campusbites_active_vendor_id", currentVendor.id);
           }
         }
       } catch (e) {
@@ -227,6 +238,7 @@ export default function VendorMenuPage() {
 
     loadVendorDetailsAndMenu();
   }, []);
+
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -722,9 +734,19 @@ export default function VendorMenuPage() {
                 />
               </div>
 
+              <div className="pt-1">
+                <ImageDropzone
+                  value={itemImage}
+                  onChange={setItemImage}
+                  label="Dish Photo / Image"
+                  aspectRatio="wide"
+                  placeholder="Drag & drop dish photo or paste image URL"
+                />
+              </div>
+
               <button
                 type="submit"
-                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 transition-colors"
+                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 transition-colors cursor-pointer"
               >
                 Add Dish to Menu →
               </button>
@@ -882,9 +904,19 @@ export default function VendorMenuPage() {
                 />
               </div>
 
+              <div className="pt-1">
+                <ImageDropzone
+                  value={editingItem.image || ""}
+                  onChange={(val) => setEditingItem({ ...editingItem, image: val })}
+                  label="Dish Photo / Image"
+                  aspectRatio="wide"
+                  placeholder="Drag & drop dish photo or paste image URL"
+                />
+              </div>
+
               <button
                 type="submit"
-                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 transition-colors"
+                className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-bold text-white rounded mt-2 transition-colors cursor-pointer"
               >
                 Save Changes →
               </button>

@@ -17,8 +17,11 @@ import {
   Search,
   XCircle,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Printer
 } from "lucide-react";
+import { ThermalReceiptModal } from "@/components/ThermalReceiptModal";
+import { printThermalSlip, ThermalSlipData } from "@/lib/thermal-printer";
 
 export default function VendorOrdersPage() {
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount | null>(null);
@@ -27,6 +30,9 @@ export default function VendorOrdersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<VendorOrderRecord | null>(null);
+  const [selectedThermalOrder, setSelectedThermalOrder] = useState<ThermalSlipData | null>(null);
+  const [autoPrintKOT, setAutoPrintKOT] = useState<boolean>(true);
+  const [autoPrintCancelled, setAutoPrintCancelled] = useState<boolean>(true);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [acknowledgedItems, setAcknowledgedItems] = useState<string[]>([]);
 
@@ -68,23 +74,36 @@ export default function VendorOrdersPage() {
   };
 
   useEffect(() => {
-    const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
+    let activeRestId: string | null = null;
 
     const loadVendorDetailsAndOrders = async () => {
+      const currentId = typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null;
+      const currentUsername = typeof window !== "undefined" ? localStorage.getItem("campusbites_student_reg") : null;
+      const currentName = typeof window !== "undefined" ? localStorage.getItem("campusbites_user_name") : null;
+
       let currentVendor = getActiveRestaurant();
       try {
         const res = await fetch("/api/restaurants");
         const data = await res.json();
-        if (data.success && data.restaurants && currentId) {
-          const found = data.restaurants.find((r: any) => r.id === currentId);
+        if (data.success && data.restaurants && data.restaurants.length > 0) {
+          const found = data.restaurants.find((r: any) => 
+            (currentId && (r.id.toLowerCase() === currentId.toLowerCase() || r.name.toLowerCase() === currentId.toLowerCase() || r.tokenPrefix.toLowerCase() === currentId.toLowerCase() || r.id.toLowerCase().startsWith(currentId.toLowerCase()))) ||
+            (currentUsername && (r.id.toLowerCase().includes(currentUsername.toLowerCase()) || r.name.toLowerCase().includes(currentUsername.toLowerCase()))) ||
+            (currentName && r.name.toLowerCase() === currentName.toLowerCase())
+          );
           if (found) {
             currentVendor = found;
+            localStorage.setItem("campusbites_active_vendor_id", found.id);
+          } else if (!currentId && data.restaurants[0]) {
+            currentVendor = data.restaurants[0];
+            localStorage.setItem("campusbites_active_vendor_id", currentVendor.id);
           }
         }
       } catch (e) {
         console.error("Failed to fetch live restaurant details for orders page:", e);
       }
 
+      activeRestId = currentVendor.id;
       setActiveVendor(currentVendor);
       fetchOrdersFromDatabase(currentVendor.id);
       fetchMenuFromDatabase(currentVendor.id);
@@ -92,14 +111,16 @@ export default function VendorOrdersPage() {
 
     loadVendorDetailsAndOrders();
 
-    if (currentId) {
-      const interval = setInterval(() => {
-        fetchOrdersFromDatabase(currentId);
-        fetchMenuFromDatabase(currentId);
-      }, 3000);
-      return () => clearInterval(interval);
-    }
+    const interval = setInterval(() => {
+      const targetId = activeRestId || (typeof window !== "undefined" ? localStorage.getItem("campusbites_active_vendor_id") : null);
+      if (targetId) {
+        fetchOrdersFromDatabase(targetId);
+        fetchMenuFromDatabase(targetId);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
+
 
   const playChimeSound = () => {
     try {
@@ -124,6 +145,59 @@ export default function VendorOrdersPage() {
     } catch (e) {}
   };
 
+  // Thermal Slip Helper (strictly items, token, time, NO price)
+  const createSlipData = (order: VendorOrderRecord, isCancellation = false, cancelReason?: string): ThermalSlipData => ({
+    tokenNumber: order.tokenNumber,
+    orderId: order.orderId,
+    stallName: activeVendor?.name || order.stallName || "Campus Canteen",
+    campus: activeVendor?.campus || "Central Campus",
+    placedAt: order.placedAt || new Date().toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    }),
+    pickupTimeSlot: order.pickupTimeSlot,
+    studentName: order.studentName,
+    studentRegNumber: order.studentRegNumber,
+    customerNotes: order.customerNotes,
+    status: isCancellation ? "CANCELLED" : order.status,
+    isCancellation,
+    cancelReason,
+    items: (order.items || []).map(i => ({
+      name: i.name,
+      quantity: Number(i.quantity) || 1,
+      outOfStock: Boolean(i.outOfStock)
+    }))
+  });
+
+  // Load auto-print preferences
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedKOT = localStorage.getItem("campusbites_autoprint_kot");
+      if (savedKOT !== null) setAutoPrintKOT(savedKOT === "true");
+      const savedCancel = localStorage.getItem("campusbites_autoprint_cancelled");
+      if (savedCancel !== null) setAutoPrintCancelled(savedCancel === "true");
+    }
+  }, []);
+
+  const toggleAutoPrintKOT = () => {
+    setAutoPrintKOT(prev => {
+      const next = !prev;
+      localStorage.setItem("campusbites_autoprint_kot", String(next));
+      return next;
+    });
+  };
+
+  const toggleAutoPrintCancelled = () => {
+    setAutoPrintCancelled(prev => {
+      const next = !prev;
+      localStorage.setItem("campusbites_autoprint_cancelled", String(next));
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (!activeVendor) return;
     const socket = getSocket();
@@ -137,19 +211,63 @@ export default function VendorOrdersPage() {
             playChimeSound();
             setToastMessage(`New order — Token ${portion.tokenNumber}`);
             setTimeout(() => setToastMessage(null), 5000);
+
+            // AUTO-PRINT KITCHEN SLIP (KOT) on Essae PR-55
+            if (autoPrintKOT) {
+              printThermalSlip({
+                tokenNumber: portion.tokenNumber,
+                orderId: incoming.orderId,
+                stallName: activeVendor.name,
+                campus: activeVendor.campus,
+                placedAt: incoming.placedAt || new Date().toLocaleString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true
+                }),
+                pickupTimeSlot: portion.pickupTimeSlot,
+                studentName: incoming.studentName,
+                studentRegNumber: incoming.studentRegNumber,
+                customerNotes: portion.customerNotes,
+                status: "PLACED",
+                items: (portion.items || []).map((i: any) => ({
+                  name: i.name,
+                  quantity: Number(i.quantity) || 1,
+                  outOfStock: Boolean(i.outOfStock)
+                }))
+              });
+            }
           }
         });
       }
     };
 
+    const handleStatusUpdate = (data: { tokenNumber: string; status: string }) => {
+      fetchOrdersFromDatabase(activeVendor.id);
+      
+      // AUTO-PRINT CANCELLATION SLIP on Essae PR-55 when order cancelled/refunded
+      if (data.status === "REFUNDED" && autoPrintCancelled) {
+        const target = orders.find(o => o.tokenNumber === data.tokenNumber);
+        if (target) {
+          printThermalSlip(createSlipData(target, true, "Cancelled by student / Out of stock"));
+        }
+      }
+    };
+
     socket.on("vendor_new_order", handleNewOrder);
+    socket.on("order_status_updated", handleStatusUpdate);
+
     return () => {
       socket.off("vendor_new_order", handleNewOrder);
+      socket.off("order_status_updated", handleStatusUpdate);
     };
-  }, [activeVendor]);
+  }, [activeVendor, autoPrintKOT, autoPrintCancelled, orders]);
 
   const handleUpdateStatus = async (tokenNumber: string, newStatus: "CONFIRMED" | "READY" | "FULFILLED" | "REFUNDED") => {
     if (!activeVendor) return;
+
+    const targetOrder = orders.find(o => o.tokenNumber === tokenNumber);
 
     try {
       const res = await fetch("/api/orders", {
@@ -170,6 +288,17 @@ export default function VendorOrdersPage() {
       tokenNumber,
       status: newStatus
     });
+
+    // TRIGGER THERMAL PRINTER
+    if (newStatus === "CONFIRMED" && targetOrder) {
+      if (autoPrintKOT) {
+        printThermalSlip(createSlipData(targetOrder, false));
+      }
+    } else if (newStatus === "REFUNDED" && targetOrder) {
+      if (autoPrintCancelled) {
+        printThermalSlip(createSlipData(targetOrder, true, "Rejected / Out of Stock by Kitchen"));
+      }
+    }
 
     const userPhone = localStorage.getItem("campusbites_user_phone") || "student@kristujayanti.com";
 
@@ -289,26 +418,55 @@ export default function VendorOrdersPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">{activeVendor.name} — Orders</h1>
-            <p className="text-xs text-ink-soft">Live queue, updates automatically</p>
+            <p className="text-xs text-ink-soft">Live queue with Essae PR-55 thermal printer auto-dispatch</p>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-cardstock p-1 rounded border border-ink/15 text-xs font-bold w-fit">
-            <button
-              onClick={() => { setActiveTab("ACTIVE"); setSearchQuery(""); }}
-              className={`px-4 py-2 rounded transition-all flex items-center gap-1.5 ${
-                activeTab === "ACTIVE" && searchQuery.trim() === "" ? "bg-marigold text-white" : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              Active ({activeOrders.length})
-            </button>
-            <button
-              onClick={() => { setActiveTab("ARCHIVED"); setSearchQuery(""); }}
-              className={`px-4 py-2 rounded transition-all flex items-center gap-1.5 ${
-                activeTab === "ARCHIVED" && searchQuery.trim() === "" ? "bg-marigold text-white" : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              <Archive className="w-3.5 h-3.5" /> History ({archivedOrders.length})
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Auto-print toggles */}
+            <div className="flex items-center gap-1.5 bg-cardstock p-1 rounded border border-ink/15 text-xs font-bold">
+              <button
+                type="button"
+                onClick={toggleAutoPrintKOT}
+                className={`px-3 py-1.5 rounded transition-all flex items-center gap-1.5 ${
+                  autoPrintKOT ? "bg-marigold text-white shadow-sm" : "text-ink-soft hover:text-ink"
+                }`}
+                title="Automatically print Kitchen Order Tickets (KOT) when order arrives or is confirmed"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Auto-Print KOT: {autoPrintKOT ? "ON" : "OFF"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={toggleAutoPrintCancelled}
+                className={`px-3 py-1.5 rounded transition-all flex items-center gap-1.5 ${
+                  autoPrintCancelled ? "bg-chili text-white shadow-sm" : "text-ink-soft hover:text-ink"
+                }`}
+                title="Automatically print cancellation slips when user cancels or order is out of stock"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Auto-Print Cancel: {autoPrintCancelled ? "ON" : "OFF"}</span>
+              </button>
+            </div>
+
+            {/* View tab toggles */}
+            <div className="flex items-center gap-1.5 bg-cardstock p-1 rounded border border-ink/15 text-xs font-bold">
+              <button
+                onClick={() => { setActiveTab("ACTIVE"); setSearchQuery(""); }}
+                className={`px-4 py-2 rounded transition-all flex items-center gap-1.5 ${
+                  activeTab === "ACTIVE" && searchQuery.trim() === "" ? "bg-marigold text-white" : "text-ink-soft hover:text-ink"
+                }`}
+              >
+                Active ({activeOrders.length})
+              </button>
+              <button
+                onClick={() => { setActiveTab("ARCHIVED"); setSearchQuery(""); }}
+                className={`px-4 py-2 rounded transition-all flex items-center gap-1.5 ${
+                  activeTab === "ARCHIVED" && searchQuery.trim() === "" ? "bg-marigold text-white" : "text-ink-soft hover:text-ink"
+                }`}
+              >
+                <Archive className="w-3.5 h-3.5" /> History ({archivedOrders.length})
+              </button>
+            </div>
           </div>
         </div>
 
@@ -350,9 +508,22 @@ export default function VendorOrdersPage() {
 
                       <div className="flex justify-between items-center">
                         <span className="text-lg font-mono font-bold text-marigold">{order.tokenNumber}</span>
-                        <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15">
-                          <Receipt className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedThermalOrder(createSlipData(order, isRefunded))}
+                            className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer"
+                            title="Print Essae PR-55 Thermal Slip (KOT - No Price)"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => setSelectedReceiptOrder(order)} 
+                            className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer"
+                            title="Digital Receipt"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
                       <OrderMeta order={order} />
@@ -404,9 +575,18 @@ export default function VendorOrdersPage() {
                   <div key={order.tokenNumber} className="card-surface p-4 border-marigold/40 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-lg font-mono font-bold text-marigold">{order.tokenNumber}</span>
-                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15">
-                        <Receipt className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedThermalOrder(createSlipData(order, false))}
+                          className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer"
+                          title="Print Essae PR-55 Thermal Slip (KOT - No Price)"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer">
+                          <Receipt className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <OrderMeta order={order} />
                     <ItemsList order={order} />
@@ -414,10 +594,10 @@ export default function VendorOrdersPage() {
                       <div className="w-full text-center py-2 rounded bg-marigold/10 text-marigold text-[11px] font-bold">Awaiting student decision…</div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2 pt-1">
-                        <button onClick={() => handleUpdateStatus(order.tokenNumber, "CONFIRMED")} className="bg-marigold hover:bg-marigold-hover text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-1">
+                        <button onClick={() => handleUpdateStatus(order.tokenNumber, "CONFIRMED")} className="bg-marigold hover:bg-marigold-hover text-white py-2 rounded text-xs font-bold flex items-center justify-center gap-1 cursor-pointer">
                           <Check className="w-3.5 h-3.5" /> Confirm
                         </button>
-                        <button onClick={() => handleUpdateStatus(order.tokenNumber, "REFUNDED")} className="bg-chili-soft text-chili py-2 rounded text-xs font-bold flex items-center justify-center gap-1">
+                        <button onClick={() => handleUpdateStatus(order.tokenNumber, "REFUNDED")} className="bg-chili-soft text-chili py-2 rounded text-xs font-bold flex items-center justify-center gap-1 cursor-pointer">
                           <XCircle className="w-3.5 h-3.5" /> Reject
                         </button>
                       </div>
@@ -437,16 +617,25 @@ export default function VendorOrdersPage() {
                   <div key={order.tokenNumber} className="card-surface p-4 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-lg font-mono font-bold text-marigold">{order.tokenNumber}</span>
-                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15">
-                        <Receipt className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedThermalOrder(createSlipData(order, false))}
+                          className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer"
+                          title="Print Essae PR-55 Thermal Slip (KOT - No Price)"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-marigold p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer">
+                          <Receipt className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <OrderMeta order={order} />
                     <ItemsList order={order} />
                     {order.status === "PARTIAL_HOLD" ? (
                       <div className="w-full text-center py-2 rounded bg-marigold/10 text-marigold text-[11px] font-bold">Awaiting student decision…</div>
                     ) : (
-                      <button onClick={() => handleUpdateStatus(order.tokenNumber, "READY")} className="w-full bg-marigold hover:bg-marigold-hover text-white py-2.5 rounded text-xs font-bold flex items-center justify-center gap-1.5">
+                      <button onClick={() => handleUpdateStatus(order.tokenNumber, "READY")} className="w-full bg-marigold hover:bg-marigold-hover text-white py-2.5 rounded text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">
                         <Bell className="w-4 h-4" /> Mark Ready
                       </button>
                     )}
@@ -465,12 +654,21 @@ export default function VendorOrdersPage() {
                   <div key={order.tokenNumber} className="card-surface p-4 border-sage/40 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-lg font-mono font-bold text-sage">{order.tokenNumber}</span>
-                      <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-sage p-1.5 rounded bg-paper border border-ink/15">
-                        <Receipt className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedThermalOrder(createSlipData(order, false))}
+                          className="text-ink-soft hover:text-sage p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer"
+                          title="Print Essae PR-55 Thermal Slip (KOT - No Price)"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setSelectedReceiptOrder(order)} className="text-ink-soft hover:text-sage p-1.5 rounded bg-paper border border-ink/15 transition-colors cursor-pointer">
+                          <Receipt className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <OrderMeta order={order} />
-                    <button onClick={() => handleUpdateStatus(order.tokenNumber, "FULFILLED")} className="w-full bg-sage hover:opacity-90 transition-opacity text-white py-2.5 rounded text-xs font-bold flex items-center justify-center gap-1.5">
+                    <button onClick={() => handleUpdateStatus(order.tokenNumber, "FULFILLED")} className="w-full bg-sage hover:opacity-90 transition-opacity text-white py-2.5 rounded text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">
                       <CheckCircle2 className="w-4 h-4" /> Picked Up / Delivered
                     </button>
                   </div>
@@ -481,20 +679,31 @@ export default function VendorOrdersPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {archivedOrders.map((order) => (
-              <div key={order.tokenNumber} className="card-surface p-4 space-y-1.5">
+              <div key={order.tokenNumber} className="card-surface p-4 space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-mono font-bold text-ink">{order.tokenNumber}</span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${order.status === "FULFILLED" ? "bg-sage-soft text-sage" : "bg-chili-soft text-chili"}`}>
-                    {order.status === "FULFILLED" ? "Delivered" : "Refunded"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${order.status === "FULFILLED" ? "bg-sage-soft text-sage" : "bg-chili-soft text-chili"}`}>
+                      {order.status === "FULFILLED" ? "Delivered" : "Refunded / Cancelled"}
+                    </span>
+                    <button
+                      onClick={() => setSelectedThermalOrder(createSlipData(order, order.status === "REFUNDED", order.status === "REFUNDED" ? "Refunded / Cancelled Order" : undefined))}
+                      className="text-ink-soft hover:text-marigold p-1 rounded bg-paper border border-ink/15 transition-colors cursor-pointer"
+                      title="Reprint Thermal Slip"
+                    >
+                      <Printer className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-                <div className="text-xs text-ink-soft font-mono">₹{order.subtotal}</div>
+                <OrderMeta order={order} />
+                <ItemsList order={order} />
               </div>
             ))}
           </div>
         )}
       </main>
 
+      {/* DIGITAL RECEIPT MODAL */}
       {selectedReceiptOrder && (
         <DigitalReceiptModal
           orderId={selectedReceiptOrder.orderId}
@@ -512,6 +721,14 @@ export default function VendorOrdersPage() {
             handleUpdateStatus(selectedReceiptOrder.tokenNumber, "FULFILLED");
             setSelectedReceiptOrder(null);
           }}
+        />
+      )}
+
+      {/* ESSAE PR-55 THERMAL RECEIPT MODAL */}
+      {selectedThermalOrder && (
+        <ThermalReceiptModal
+          order={selectedThermalOrder}
+          onClose={() => setSelectedThermalOrder(null)}
         />
       )}
     </div>
