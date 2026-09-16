@@ -131,7 +131,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // Packaging is a single flat charge for the whole order, only when taking away.
   const totalTakeawayFee = orderType === "TAKEAWAY" ? packagingFee : 0;
 
-  const grandTotal = totalAmount + platformFee + convenienceFee + totalTakeawayFee;
+  // Round the final sum too — adding already-rounded decimals (e.g. 3.2 + 3.2) can still
+  // land on a binary-float artifact like 176.39999999999998 without this.
+  const grandTotal = Math.round((totalAmount + platformFee + convenienceFee + totalTakeawayFee) * 100) / 100;
 
   const itemsByStall = cartItems.reduce((acc, item) => {
     if (!acc[item.stallId]) {

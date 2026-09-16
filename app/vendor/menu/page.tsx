@@ -377,6 +377,29 @@ export default function VendorMenuPage() {
     }
   };
 
+  const toggleVegStatus = async (itemId: string, currentIsVeg: boolean) => {
+    if (!activeVendor) return;
+    try {
+      const res = await fetch("/api/menu", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: itemId,
+          isVeg: !currentIsVeg
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchMenuFromDatabase(activeVendor.id);
+        try {
+          getSocket().emit("menu_update", { restaurantId: activeVendor.id });
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const deleteItem = async (itemId: string) => {
     if (!activeVendor) return;
     if (!confirm("Are you sure you want to delete this menu item?")) return;
@@ -473,11 +496,16 @@ export default function VendorMenuPage() {
             <div key={item.id} className="card-surface p-4 flex flex-col justify-between space-y-3">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${
-                    item.isVeg ? "bg-sage-soft text-sage border-sage/30" : "bg-chili-soft text-chili border-chili/30"
-                  }`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleVegStatus(item.id, item.isVeg)}
+                    title="Click to toggle Veg / Non-Veg"
+                    className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-colors ${
+                      item.isVeg ? "bg-sage-soft text-sage border-sage/30 hover:bg-sage/20" : "bg-chili-soft text-chili border-chili/30 hover:bg-chili/20"
+                    }`}
+                  >
                     {item.isVeg ? "VEG" : "NON-VEG"}
-                  </span>
+                  </button>
                   <div className="flex items-center gap-1.5 font-mono">
                     {item.offerType && item.offerType !== "NONE" && item.offerValue && item.offerValue > 0 ? (
                       <>
