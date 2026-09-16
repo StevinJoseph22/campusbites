@@ -168,7 +168,7 @@ export default function LoginPage() {
   const handleSendRegisterOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!registerRegNumber.trim()) {
-      setErrorMessage("Please enter your Student Register Number.");
+      setErrorMessage("Please enter your Kristu Jayanti email or register number.");
       return;
     }
     setIsLoading(true);
@@ -261,7 +261,7 @@ export default function LoginPage() {
   const handleSendResetOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetRegNumber.trim()) {
-      setErrorMessage("Please enter your Student Register Number.");
+      setErrorMessage("Please enter your Kristu Jayanti email or register number.");
       return;
     }
     setIsLoading(true);
@@ -530,7 +530,7 @@ export default function LoginPage() {
                 }}
                 className="hover:text-marigold transition-colors"
               >
-                Register Student Account
+                Create an Account
               </button>
               <button
                 type="button"
@@ -551,7 +551,7 @@ export default function LoginPage() {
         {authMode === "REGISTER" && (
           <form onSubmit={isRegisterOtpSent ? handleRegisterSubmit : handleSendRegisterOtp} className="space-y-4 text-xs">
             <div className="space-y-1.5">
-              <label className="font-bold text-ink-soft">Student Register Number</label>
+              <label className="font-bold text-ink-soft">Kristu Jayanti Email / Register Number</label>
               <div className="relative flex items-center">
                 <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
                 <input
@@ -560,10 +560,13 @@ export default function LoginPage() {
                   disabled={isRegisterOtpSent}
                   value={registerRegNumber}
                   onChange={(e) => setRegisterRegNumber(e.target.value)}
-                  placeholder="e.g. 26bcaf59"
+                  placeholder="e.g. 26bcaf59 or priya.faculty"
                   className="w-full bg-paper border border-ink/15 rounded pl-10 pr-4 py-3 text-ink text-xs focus:outline-none focus:border-marigold font-bold"
                 />
               </div>
+              <p className="text-[10px] text-ink-soft">
+                We'll send a verification code to <strong>{registerRegNumber.trim() ? registerRegNumber.trim().split("@")[0] : "this"}@kristujayanti.com</strong> — anyone with a valid Kristu Jayanti email can create an account.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -664,7 +667,7 @@ export default function LoginPage() {
         {authMode === "FORGOT" && (
           <form onSubmit={isOtpSent ? handleVerifyAndResetPassword : handleSendResetOtp} className="space-y-4 text-xs">
             <div className="space-y-1.5">
-              <label className="font-bold text-ink-soft">Student Register Number</label>
+              <label className="font-bold text-ink-soft">Kristu Jayanti Email / Register Number</label>
               <div className="relative flex items-center">
                 <User className="w-4 h-4 text-ink-soft absolute left-3.5" />
                 <input
