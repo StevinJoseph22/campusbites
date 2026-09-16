@@ -15,13 +15,33 @@ model User {
   email        String   @unique // username@kristujayanti.com for students, or custom email
   name         String?
   passwordHash String   // Encrypted via bcryptjs
-  role         String   @default("STUDENT") // Roles: STUDENT, VENDOR, ADMIN
+  role         String   @default("STUDENT") // Roles: STUDENT, VENDOR, ADMIN, SUPER_ADMIN
   isTempPassword Boolean  @default(false)
   campus         String?  @default("Airport Road Campus")
+  institutionId  String?  // null for the platform SUPER_ADMIN, which isn't scoped to one college
+  institution    Institution? @relation(fields: [institutionId], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   orders Order[]
+}
+
+model Institution {
+  id          String   @id
+  name        String
+  code        String
+  emailDomain String
+  tokenPrefix String   @default("KJU")
+  campuses    String   // JSON array of campus name strings
+  logo        String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  restaurants Restaurant[]
+  orders      Order[]
+  settings    SystemSetting[]
 }
 
 model OtpVerification {
@@ -46,6 +66,8 @@ model Restaurant {
   pinCodeHash String   @default("123456") // Hashed or 6-digit PIN
   isOpen      Boolean  @default(true)
   campus      String   @default("Airport Road Campus")
+  institutionId String? @default("kju")
+  institution   Institution? @relation(fields: [institutionId], references: [id])
   createdAt   DateTime @default(now())
 
   menuItems  MenuItem[]
@@ -95,6 +117,8 @@ model Order {
   convenienceFeeAmount Float @default(0) // ₹ actually charged at order time (convenienceFee % of food subtotal)
   packagingFeeAmount   Float @default(0) // ₹ flat takeaway packaging charge, 0 for dine-in
   customerNotes   String?
+  institutionId   String?  @default("kju")
+  institution     Institution? @relation(fields: [institutionId], references: [id])
   createdAt       DateTime @default(now())
 
   vendorPortions OrderItem[]
@@ -122,4 +146,6 @@ model SystemSetting {
   platformFee    Float  @default(2.0) // % of food subtotal
   convenienceFee Float  @default(2.0) // % of food subtotal
   takeawayFee    Float  @default(10.0) // flat ₹, takeaway orders only
+  institutionId  String? // one SystemSetting row per institution; id and institutionId are the same value by convention
+  institution    Institution? @relation(fields: [institutionId], references: [id])
 }
