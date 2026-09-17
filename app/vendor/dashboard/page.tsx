@@ -22,6 +22,7 @@ import { VendorDashboardSkeleton } from "@/components/Skeletons";
 
 export default function VendorDashboardPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount>(RESTAURANT_ACCOUNTS[0]);
   const [loading, setLoading] = useState(true);
   const [activeQueueCount, setActiveQueueCount] = useState(0);
@@ -30,6 +31,10 @@ export default function VendorDashboardPage() {
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [acknowledgedItems, setAcknowledgedItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchLiveDashboardStats = async (vendorId: string) => {
     try {
@@ -141,16 +146,23 @@ export default function VendorDashboardPage() {
     item => (!item.available || item.stockCount <= 0) && !acknowledgedItems.includes(item.id)
   );
 
+  if (!mounted || loading) {
+    return (
+      <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+        <VendorNav />
+        <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
+          <VendorDashboardSkeleton />
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+    <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
-        {loading ? (
-          <VendorDashboardSkeleton />
-        ) : (
-          <>
-            {/* Out of stock alert */}
+        {/* Out of stock alert */}
         {outOfStockItems.length > 0 && (
           <div className="card-surface p-4 border-chili/30 space-y-2.5">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -270,8 +282,6 @@ export default function VendorDashboardPage() {
             </div>
           </Link>
         </div>
-          </>
-        )}
       </main>
     </div>
   );

@@ -32,7 +32,8 @@ import {
   Calendar,
   AlertCircle,
   Plus,
-  Minus
+  Minus,
+  Ticket
 } from "lucide-react";
 
 export default function StudentDashboardPage() {
@@ -45,6 +46,13 @@ export default function StudentDashboardPage() {
   const [floorFilter, setFloorFilter] = useState<string>("ALL");
   const [selectedCampus, setSelectedCampus] = useState("Airport Road Campus");
   const [canteenLoading, setCanteenLoading] = useState<string | null>(null);
+  const [guestData, setGuestData] = useState<{
+    isGuest: boolean;
+    name: string;
+    college: string;
+    event: string;
+    expiresAt: string;
+  } | null>(null);
 
   const handleRedirectToRestaurant = (stallId: string, stallName: string) => {
     setCanteenLoading(stallName);
@@ -91,6 +99,17 @@ export default function StudentDashboardPage() {
     setStudentEmail(email);
     if (email) {
       fetchStudentOrders(email);
+    }
+
+    const role = localStorage.getItem("campusbites_user_role");
+    if (role === "GUEST") {
+      setGuestData({
+        isGuest: true,
+        name: localStorage.getItem("campusbites_user_name") || "Visiting Guest",
+        college: localStorage.getItem("campusbites_guest_college") || "Visiting Institution",
+        event: localStorage.getItem("campusbites_guest_event") || "Campus Event / Competition",
+        expiresAt: localStorage.getItem("campusbites_guest_expires_at") || ""
+      });
     }
 
     const savedCampus = localStorage.getItem("campusbites_student_campus");
@@ -218,6 +237,48 @@ export default function StudentDashboardPage() {
           <StudentDashboardSkeleton />
         ) : (
           <>
+            {/* 1-Day Campus Guest Welcome Card */}
+            {guestData && (
+              <div className="card-surface p-4 sm:p-5 border-2 border-marigold/40 bg-gradient-to-r from-marigold/15 via-surface to-marigold/5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-reveal-up">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-2xl bg-marigold/20 border border-marigold/40 flex items-center justify-center text-marigold shrink-0 shadow-inner">
+                    <Ticket className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="font-display font-black text-sm sm:text-base text-ink">
+                        Welcome, {guestData.name}! 🎟️
+                      </h2>
+                      <span className="px-2 py-0.5 rounded-full bg-marigold/20 border border-marigold/30 text-marigold text-[10px] font-black uppercase tracking-wider">
+                        1-Day Guest Pass
+                      </span>
+                    </div>
+                    <p className="text-[11px] sm:text-xs text-ink-soft font-sans">
+                      {guestData.college && guestData.event ? (
+                        <>
+                          Visiting from <strong className="text-ink">{guestData.college}</strong> for <strong className="text-ink">{guestData.event}</strong> · Valid for canteen orders today until 11:59 PM.
+                        </>
+                      ) : guestData.college ? (
+                        <>
+                          Visiting from <strong className="text-ink">{guestData.college}</strong> · Valid for canteen orders today until 11:59 PM.
+                        </>
+                      ) : (
+                        <>
+                          Welcome to the campus · Valid for canteen orders today until 11:59 PM.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                  <span className="px-3 py-1.5 rounded-xl bg-surface border border-ink/15 text-[11px] font-mono font-bold text-ink flex items-center gap-1.5 shadow-sm">
+                    <Clock className="w-3.5 h-3.5 text-marigold" />
+                    <span>Expires 11:59 PM</span>
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Banner */}
         <div className="card-surface relative overflow-hidden border-l-4 border-l-marigold">
           <div className="p-6 sm:p-8 space-y-3">

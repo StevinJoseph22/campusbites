@@ -27,6 +27,7 @@ import { hardwarePrinter, ThermalSlipData } from "@/lib/hardware-printer";
 import { VendorOrdersSkeleton } from "@/components/Skeletons";
 
 export default function VendorOrdersPage() {
+  const [mounted, setMounted] = useState(false);
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount | null>(null);
   const [orders, setOrders] = useState<VendorOrderRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,10 @@ export default function VendorOrdersPage() {
   const [printerConnected, setPrinterConnected] = useState(false);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [acknowledgedItems, setAcknowledgedItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const unsub = hardwarePrinter.subscribe(() => {
@@ -354,7 +359,16 @@ export default function VendorOrdersPage() {
     }
   };
 
-  if (!activeVendor) return null;
+  if (!mounted || loading || !activeVendor) {
+    return (
+      <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+        <VendorNav />
+        <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
+          <VendorOrdersSkeleton />
+        </main>
+      </div>
+    );
+  }
 
   const outOfStockItems = menuItems.filter(item => (!item.available || item.stockCount <= 0) && !acknowledgedItems.includes(item.id));
 
@@ -381,8 +395,10 @@ export default function VendorOrdersPage() {
             <span className="font-mono text-ink-soft">₹{item.price * item.quantity}</span>
             {!item.outOfStock && order.status !== "READY" && (
               <button
+                suppressHydrationWarning
+                type="button"
                 onClick={() => handleFlagOutOfStock(order.tokenNumber, item.name)}
-                className="text-[9px] text-chili font-bold bg-chili-soft px-1.5 py-0.5 rounded"
+                className="text-[9px] text-chili font-bold bg-chili-soft px-1.5 py-0.5 rounded cursor-pointer"
                 title="Flag out of stock"
               >
                 OOS
@@ -408,16 +424,11 @@ export default function VendorOrdersPage() {
   );
 
   return (
-    <div className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+    <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
-        {loading || !activeVendor ? (
-          <VendorOrdersSkeleton />
-        ) : (
-          <>
-            {/* Out of stock alert */}
-            {outOfStockItems.length > 0 && (
+        {outOfStockItems.length > 0 && (
               <div className="card-surface p-4 border-chili/30 space-y-2.5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
@@ -728,6 +739,8 @@ export default function VendorOrdersPage() {
                       {order.status === "FULFILLED" ? "Delivered" : "Refunded / Cancelled"}
                     </span>
                     <button
+                      suppressHydrationWarning
+                      type="button"
                       onClick={() => setSelectedThermalOrder(createSlipData(order, order.status === "REFUNDED", order.status === "REFUNDED" ? "Refunded / Cancelled Order" : undefined))}
                       className="text-ink-soft hover:text-marigold p-1 rounded bg-paper border border-ink/15 transition-colors cursor-pointer"
                       title="Reprint Thermal Slip"
@@ -741,8 +754,6 @@ export default function VendorOrdersPage() {
               </div>
             ))}
           </div>
-        )}
-          </>
         )}
       </main>
 

@@ -118,7 +118,7 @@ export async function POST(req: Request) {
         role,
         passwordHash,
         campus: campus || "Central Campus",
-        institutionId: instId
+        ...(instId ? { institution: { connect: { id: instId } } } : {})
       }
     });
 

@@ -310,11 +310,38 @@ export async function POST(req: Request) {
       }
     }
 
+    // Check user account & enforce 1-Day Event Guest Pass validity
+    let matchedUserId: string | null = null;
+    const matchedUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: studentEmail, mode: "insensitive" as const } },
+          ...(studentRegNumber ? [{ username: { equals: studentRegNumber.trim(), mode: "insensitive" as const } }] : [])
+        ]
+      }
+    });
+
+    if (matchedUser) {
+      matchedUserId = matchedUser.id;
+      if (matchedUser.role === "GUEST" && matchedUser.guestExpiresAt) {
+        if (new Date(matchedUser.guestExpiresAt).getTime() < Date.now()) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: "Your 1-Day Event Guest Pass has expired (valid for 1 day only). Please generate a fresh guest pass to order from campus canteens today." 
+            },
+            { status: 401 }
+          );
+        }
+      }
+    }
+
     // Save master order
     const masterOrder = await prisma.order.create({
       data: {
         orderId,
         masterToken,
+        userId: matchedUserId,
         totalAmount,
         platformFeeAmount: Number(platformFeeAmount) || 0,
         convenienceFeeAmount: Number(convenienceFeeAmount) || 0,

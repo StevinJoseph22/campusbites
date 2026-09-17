@@ -80,6 +80,35 @@ sequenceDiagram
 
 ---
 
+### 6. 🎟️ Smart 1-Day Event Guest Pass for External Attendees
+- **Universal Guest Onboarding**: Students, participants, guest speakers, and attendees visiting from other colleges/universities (for competitions, fests, hackathons, seminars) can generate a verified **1-Day Guest Pass** without needing internal roll numbers or `@kristujayanti.com` email domains.
+- **Deep Email OTP Verification**: Real-time personal email mailbox check and 4-digit OTP dispatch.
+- **Strict 24-Hour / Midnight Expiration**: All guest sessions and meal ordering privileges automatically expire at 11:59:59 PM IST on the day of issuance.
+- **Automatic Live Countdown Pill**: Displays `🎟️ 1-Day Pass (College) · [Time Remaining]` in the navbar with real-time timer and auto-signout upon expiry.
+
+```mermaid
+flowchart TD
+    G1["Visiting Student / Guest arrives at Login"] --> G2["Clicks '1-Day Event Guest Pass'"]
+    G2 --> G3["Enters Name, Home College, Fest/Event & Personal Email"]
+    G3 --> G4["Real-Time MX Lookup & 4-Digit Email OTP Dispatch"]
+    G4 --> G5["Enters OTP & Verifies"]
+    G5 --> G6["System Generates Pass (GST-COLLEGE-XXXX)"]
+    G6 --> G7["Pass Validated until 11:59:59 PM Today"]
+    G7 --> G8["Access Canteens, Order Food via UPI & Receive Live Token Updates"]
+    G8 --> G9{"Time >= 11:59:59 PM?"}
+    G9 -- "Yes" --> G10["Auto-Expire Pass & Invalidate Session"]
+    G9 -- "No" --> G8
+```
+
+---
+
+### 7. 🏛️ Custom Glassmorphism Multi-Campus Selector & Flawless Color Grading
+- **Custom React Popover**: Replaced primitive browser `<select>` with a dark/light mode color-graded popover (`backdrop-blur-xl`).
+- **Interactive Campus Cards**: Live canteen status indicators, dedicated location icons, descriptive campus taglines, and circular Marigold checkmark badges.
+- **SSR Hydration Resilience**: Complete `suppressHydrationWarning` and lifecycle mounting protection against browser autofill extensions injecting `fdprocessedid`.
+
+---
+
 ## 🚀 Quick Start
 
 ### 1. Clone & Install
@@ -126,6 +155,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | **Super Admin** | `/admin` | University analytics, vendor onboarding, and global finance |
 | **Vendor** | `/vendor/orders` | Live order queue, menu manager, sales report, printer settings |
 | **Student** | `/student/dashboard` | Canteen exploration, menu ordering, multi-stall cart, and token tracker |
+| **Guest** | `/student/dashboard` | 1-Day Event Guest Pass, canteen pre-ordering, and live digital pickup status |
 
 ---
 

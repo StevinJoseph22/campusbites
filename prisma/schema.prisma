@@ -15,11 +15,14 @@ model User {
   email        String   @unique // username@kristujayanti.com for students, or custom email
   name         String?
   passwordHash String   // Encrypted via bcryptjs
-  role         String   @default("STUDENT") // Roles: STUDENT, VENDOR, ADMIN, SUPER_ADMIN
+  role         String   @default("STUDENT") // Roles: STUDENT, VENDOR, ADMIN, SUPER_ADMIN, GUEST
   isTempPassword Boolean  @default(false)
   campus         String?  @default("Airport Road Campus")
   institutionId  String?  // null for the platform SUPER_ADMIN, which isn't scoped to one college
   institution    Institution? @relation(fields: [institutionId], references: [id])
+  guestExpiresAt DateTime? // End-of-day expiration timestamp for 1-day event guests
+  guestCollege   String?  // Home college/university name for visiting students
+  guestEvent     String?  // Event/Fest/Competition name (e.g. Xact 2026, Hackathon)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

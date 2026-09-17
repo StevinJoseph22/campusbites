@@ -18,11 +18,16 @@ const NAV_LINKS = [
 export function VendorNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [currentVendor, setCurrentVendor] = useState<RestaurantAccount | null>(null);
   const [isOpenStatus, setIsOpenStatus] = useState<boolean>(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPrinterModalOpen, setIsPrinterModalOpen] = useState(false);
   const [printerConnected, setPrinterConnected] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const unsub = hardwarePrinter.subscribe(() => {
@@ -103,7 +108,6 @@ export function VendorNav() {
     loadVendorDetails();
   }, [router]);
 
-
   const handleSignOut = () => {
     localStorage.removeItem("campusbites_user_role");
     localStorage.removeItem("campusbites_user_phone");
@@ -113,10 +117,27 @@ export function VendorNav() {
     router.push("/login");
   };
 
-  if (!currentVendor) return null;
+  if (!mounted || !currentVendor) {
+    return (
+      <header suppressHydrationWarning className="sticky top-0 z-40 bg-surface border-b border-ink/10">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded bg-ink/10 animate-pulse shrink-0" />
+            <div className="space-y-1">
+              <div className="w-28 h-4 bg-ink/10 rounded animate-pulse" />
+              <div className="w-16 h-3 bg-ink/10 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-20 h-7 bg-ink/10 rounded animate-pulse" />
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
-    <header className="sticky top-0 z-40 bg-surface border-b border-ink/10">
+    <header suppressHydrationWarning className="sticky top-0 z-40 bg-surface border-b border-ink/10">
       <div className="max-w-7xl mx-auto px-4 lg:px-8 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <img src={currentVendor.logo} alt={currentVendor.name} className="w-10 h-10 rounded object-cover border border-ink/15 shrink-0" />

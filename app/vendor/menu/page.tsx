@@ -47,11 +47,16 @@ import { ImageDropzone } from "@/components/ImageDropzone";
 import { VendorMenuSkeleton } from "@/components/Skeletons";
 
 export default function VendorMenuPage() {
+  const [mounted, setMounted] = useState(false);
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Add Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -445,8 +450,19 @@ export default function VendorMenuPage() {
 
   const filtered = menuItems.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
+  if (!mounted) {
+    return (
+      <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+        <VendorNav />
+        <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
+          <VendorMenuSkeleton />
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+    <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
@@ -461,17 +477,20 @@ export default function VendorMenuPage() {
 
           <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
             <button
+              suppressHydrationWarning
+              type="button"
               onClick={downloadTemplate}
-              className="px-3.5 py-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-ink flex items-center gap-1.5 transition-colors"
+              className="px-3.5 py-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-ink flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Download Template</span>
             </button>
 
-            <label className="px-3.5 py-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-ink flex items-center gap-1.5 transition-colors cursor-pointer">
+            <label suppressHydrationWarning className="px-3.5 py-2 rounded bg-cardstock border border-ink/15 text-ink-soft hover:text-ink flex items-center gap-1.5 transition-colors cursor-pointer">
               <Upload className="w-3.5 h-3.5" />
               <span>Upload CSV</span>
               <input
+                suppressHydrationWarning
                 type="file"
                 accept=".csv"
                 onChange={handleFileUpload}
@@ -480,8 +499,10 @@ export default function VendorMenuPage() {
             </label>
 
             <button
+              suppressHydrationWarning
+              type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="bg-marigold hover:bg-marigold-hover px-4 py-2 rounded text-white font-bold flex items-center gap-1.5 transition-colors"
+              className="bg-marigold hover:bg-marigold-hover px-4 py-2 rounded text-white font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Add Dish</span>
@@ -501,6 +522,7 @@ export default function VendorMenuPage() {
         <div className="relative max-w-sm">
           <Search className="w-3.5 h-3.5 text-ink-soft absolute left-3 top-1/2 -translate-y-1/2" />
           <input
+            suppressHydrationWarning
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

@@ -21,9 +21,14 @@ import { VendorSalesSkeleton } from "@/components/Skeletons";
 
 export default function VendorSalesReportPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [activeVendor, setActiveVendor] = useState<RestaurantAccount>(RESTAURANT_ACCOUNTS[0]);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [daysFilter, setDaysFilter] = useState<"1" | "7" | "30" | "custom">("7");
   const [customDate, setCustomDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -314,16 +319,23 @@ export default function VendorSalesReportPage() {
   const graphData = getGraphData();
   const maxSalesVal = Math.max(...graphData.map(g => g.sales), 100);
 
+  if (!mounted || loading) {
+    return (
+      <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+        <VendorNav />
+        <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
+          <VendorSalesSkeleton />
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-paper text-ink flex flex-col pb-12">
+    <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
       <VendorNav />
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
-        {loading ? (
-          <VendorSalesSkeleton />
-        ) : (
-          <>
-            {/* Title Header */}
+        {/* Title Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="font-display text-xl sm:text-2xl font-bold text-ink flex items-center gap-2">
@@ -567,8 +579,6 @@ export default function VendorSalesReportPage() {
             </div>
           </div>
         </div>
-          </>
-        )}
       </main>
     </div>
   );

@@ -25,7 +25,13 @@ import {
   Check,
   RotateCcw,
   Send,
-  RefreshCw
+  RefreshCw,
+  Ticket,
+  Phone,
+  MapPin,
+  Calendar,
+  Award,
+  Clock
 } from "lucide-react";
 import { PageLoader } from "@/components/PageLoader";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -136,6 +142,41 @@ export default function LoginPage() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSuccess, setSetupSuccess] = useState<string | null>(null);
   const [isSubmittingSetup, setIsSubmittingSetup] = useState(false);
+
+  // 1-Day Event Guest Pass Modal States (For visiting students / competitions)
+  const [showGuestModal, setShowGuestModal] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestCollege, setGuestCollege] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestEvent, setGuestEvent] = useState("Inter-College Fest / Competition");
+  const [guestCampus, setGuestCampus] = useState("Airport Road Campus");
+  const [guestHostInstId, setGuestHostInstId] = useState("kju");
+  const [guestOtp, setGuestOtp] = useState("");
+  const [isGuestOtpSent, setIsGuestOtpSent] = useState(false);
+  const [isSendingGuestOtp, setIsSendingGuestOtp] = useState(false);
+  const [guestOtpCooldown, setGuestOtpCooldown] = useState(0);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const [guestSuccess, setGuestSuccess] = useState<string | null>(null);
+  const [isGuestOtpInvalid, setIsGuestOtpInvalid] = useState(false);
+  const [isSubmittingGuest, setIsSubmittingGuest] = useState(false);
+
+  // Guest OTP cooldown timer
+  useEffect(() => {
+    if (guestOtpCooldown <= 0) return;
+    const timer = setTimeout(() => setGuestOtpCooldown(prev => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [guestOtpCooldown]);
+
+  // Check URL params for expired guest pass notification
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get("expired") === "guest") {
+        setErrorMessage("⏰ Your previous 1-Day Event Guest Pass has expired. Welcome back! Please generate a fresh guest pass for today's visit.");
+      }
+    }
+  }, []);
 
   // Fetch institutions on mount
   useEffect(() => {
@@ -539,6 +580,134 @@ export default function LoginPage() {
     }
   };
 
+  // SEND 1-DAY EVENT GUEST PASS OTP
+  const handleSendGuestOtp = async () => {
+    if (!guestName.trim()) {
+      setGuestError("Please enter your full name.");
+      return;
+    }
+    if (!guestCollege.trim()) {
+      setGuestError("Please enter your home College / University name.");
+      return;
+    }
+    if (!guestEmail.trim() || !guestEmail.includes("@")) {
+      setGuestError("Please enter a valid email address (e.g. your Gmail or personal email).");
+      return;
+    }
+
+    setIsSendingGuestOtp(true);
+    setGuestError(null);
+    setGuestSuccess(null);
+    setIsGuestOtpInvalid(false);
+
+    try {
+      const res = await fetch("/api/auth/send-guest-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: guestName.trim(),
+          collegeName: guestCollege.trim(),
+          email: guestEmail.trim(),
+          eventName: guestEvent.trim()
+        })
+      });
+
+      const data = await res.json();
+      setIsSendingGuestOtp(false);
+
+      if (data.success) {
+        setIsGuestOtpSent(true);
+        setGuestOtpCooldown(60);
+        setGuestSuccess(`✓ 4-digit guest pass code sent to ${guestEmail.trim()}. Check inbox & Spam.`);
+      } else {
+        setGuestError(data.error || "Failed to send verification code. Please check your email.");
+      }
+    } catch (e: any) {
+      setIsSendingGuestOtp(false);
+      setGuestError("Network error sending guest code. Please try again.");
+    }
+  };
+
+  // SUBMIT 1-DAY EVENT GUEST PASS ACTIVATION
+  const handleGuestLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsGuestOtpInvalid(false);
+
+    if (!guestName.trim() || !guestCollege.trim() || !guestEmail.trim()) {
+      setGuestError("Please complete your name, college, and email address.");
+      return;
+    }
+    if (!isGuestOtpSent) {
+      setGuestError("Please click 'Send Pass Code' to verify your email address.");
+      return;
+    }
+    if (!guestOtp.trim()) {
+      setIsGuestOtpInvalid(true);
+      setGuestError("Please enter the 4-digit code sent to your email.");
+      return;
+    }
+
+    setIsSubmittingGuest(true);
+    setGuestError(null);
+
+    try {
+      const res = await fetch("/api/auth/guest-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: guestName.trim(),
+          collegeName: guestCollege.trim(),
+          email: guestEmail.trim(),
+          phone: guestPhone.trim(),
+          eventName: guestEvent.trim(),
+          campus: guestCampus,
+          otp: guestOtp.trim(),
+          institutionId: guestHostInstId
+        })
+      });
+
+      const data = await res.json();
+      setIsSubmittingGuest(false);
+
+      if (data.invalidOtp) {
+        setIsGuestOtpInvalid(true);
+        setGuestError(data.error || "❌ Invalid code entered. Please re-check the 4 digits.");
+        return;
+      }
+
+      if (data.success && data.user) {
+        setShowGuestModal(false);
+        const user = data.user;
+
+        // Store guest session details in localStorage
+        localStorage.setItem("campusbites_user_role", "GUEST");
+        localStorage.setItem("campusbites_user_name", user.name);
+        localStorage.setItem("campusbites_user_phone", user.email);
+        localStorage.setItem("campusbites_student_reg", user.username);
+        localStorage.setItem("campusbites_student_campus", user.campus || guestCampus);
+        localStorage.setItem("campusbites_guest_expires_at", user.guestExpiresAt);
+        localStorage.setItem("campusbites_guest_college", user.guestCollege || guestCollege.trim());
+        localStorage.setItem("campusbites_guest_event", user.guestEvent || guestEvent.trim());
+        localStorage.setItem("campusbites_selected_institution", user.institutionId || "kju");
+        localStorage.setItem("campusbites_institution_name", user.institutionName || "Kristu Jayanti University");
+
+        setLoadingState({
+          active: true,
+          message: `Welcome Event Guest ${user.name}! 🎟️`,
+          submessage: `Activating 1-Day Pass for ${user.guestCollege || "Visiting Institution"}...`,
+          type: "auth"
+        });
+
+        setTimeout(() => router.push("/student/dashboard"), 1100);
+      } else {
+        setGuestError(data.error || "Failed to activate 1-day guest pass.");
+      }
+    } catch (e: any) {
+      setIsSubmittingGuest(false);
+      setGuestError("Network error. Please try again.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-canvas text-ink flex flex-col items-center justify-center p-4 sm:p-6 relative">
       {/* Theme Toggle in Header Corner */}
@@ -679,6 +848,47 @@ export default function LoginPage() {
               <span>Register New Users →</span>
             </button>
           </div>
+        </div>
+
+        {/* 1-DAY CAMPUS GUEST PASS CARD (For guest speakers, evaluators, visitors & event attendees) */}
+        <div className="bg-cardstock/90 backdrop-blur-sm border-2 border-marigold/40 rounded-3xl p-5 shadow-xl space-y-3.5 relative overflow-hidden">
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-marigold/15 rounded-full blur-xl pointer-events-none" />
+
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-marigold/20 border border-marigold/40 flex items-center justify-center text-marigold shrink-0 shadow-inner">
+              <Ticket className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h3 className="font-display font-extrabold text-sm text-ink">
+                  Visiting Campus or Attending an Event?
+                </h3>
+                <span className="px-2 py-0.5 rounded-full bg-marigold/20 border border-marigold/30 text-marigold text-[10px] font-black uppercase tracking-wider">
+                  1-Day Pass
+                </span>
+              </div>
+              <p className="text-[11px] text-ink-soft leading-relaxed font-sans">
+                Guest speakers, resource persons, conference attendees, and campus visitors can get an instant 1-Day Guest Pass to order from campus canteens today.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setGuestError(null);
+              setGuestSuccess(null);
+              setIsGuestOtpSent(false);
+              setGuestOtp("");
+              setIsGuestOtpInvalid(false);
+              setShowGuestModal(true);
+            }}
+            suppressHydrationWarning
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-marigold to-marigold-hover hover:opacity-95 active:scale-[0.99] text-xs font-black text-white transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 text-white" />
+            <span>Get 1-Day Campus Guest Pass →</span>
+          </button>
         </div>
 
         {/* Footer Note */}
@@ -1273,6 +1483,257 @@ export default function LoginPage() {
                 className="w-full bg-marigold hover:bg-marigold-hover py-3 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
               >
                 {isSubmittingSetup ? "Saving Password..." : "Save Password & Enter Kitchen"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: 1-DAY EVENT GUEST PASS (FOR VISITING STUDENTS & COMPETITIONS) */}
+      {showGuestModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" style={{ zIndex: 9999 }}>
+          <div className="bg-cardstock border border-marigold/30 w-full max-w-lg rounded-3xl p-6 sm:p-7 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            {/* Guest Modal Header */}
+            <div className="flex items-center justify-between border-b border-ink/10 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-black text-ink flex items-center gap-2 font-display">
+                    <Ticket className="w-5 h-5 text-marigold" />
+                    1-Day Campus Guest Pass
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full bg-marigold/15 border border-marigold/30 text-marigold text-[10px] font-black uppercase tracking-wider">
+                    Today Only
+                  </span>
+                </div>
+                <p className="text-[11px] text-ink-soft mt-0.5">
+                  Instant canteen access for guest speakers, visitors, event attendees & participants
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGuestModal(false)}
+                className="text-ink-soft hover:text-ink font-bold text-base p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error Message */}
+            {guestError && (
+              <div className="p-3 rounded-xl bg-chili-soft border border-chili/30 text-chili text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                <Info className="w-4 h-4 shrink-0" />
+                <span>{guestError}</span>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {guestSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{guestSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleGuestLoginSubmit} className="space-y-3.5 text-xs">
+              {/* Full Name & Home College / Organization */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-extrabold text-ink block text-[11px]">
+                    Your Full Name *
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      required
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      placeholder="e.g. Dr. Alex / Stevin / Sarah"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-extrabold text-ink block text-[11px]">
+                    Organization / Institution / College *
+                  </label>
+                  <div className="relative">
+                    <Building2 className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      required
+                      value={guestCollege}
+                      onChange={(e) => setGuestCollege(e.target.value)}
+                      placeholder="e.g. Christ Univ, Google, Infosys, Guest"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Purpose of Visit & Host Campus */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-extrabold text-ink block text-[11px]">
+                    Purpose of Visit / Event Name
+                  </label>
+                  <div className="relative">
+                    <Award className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={guestEvent}
+                      onChange={(e) => setGuestEvent(e.target.value)}
+                      placeholder="e.g. Guest Lecture, Fest, Workshop, Meeting"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-extrabold text-ink block text-[11px]">
+                    Visiting Campus (Host Location) *
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                    <select
+                      value={guestCampus}
+                      onChange={(e) => setGuestCampus(e.target.value)}
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink font-bold focus:outline-none focus:border-marigold cursor-pointer"
+                    >
+                      <option value="Airport Road Campus">Airport Road Campus</option>
+                      <option value="Central Campus">Central Campus</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Personal Email & Send OTP */}
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">
+                  Personal Email Address (for 1-Day Pass & Order Receipts) *
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Mail className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                    <input
+                      type="email"
+                      required
+                      value={guestEmail}
+                      onChange={(e) => setGuestEmail(e.target.value)}
+                      placeholder="e.g. rahul.sharma@gmail.com"
+                      className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold font-medium"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendGuestOtp}
+                    disabled={isSendingGuestOtp || guestOtpCooldown > 0 || !guestEmail.trim()}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
+                      isGuestOtpSent && guestOtpCooldown > 0
+                        ? "bg-surface border border-ink/20 text-ink-soft cursor-not-allowed"
+                        : "bg-marigold hover:bg-marigold-hover text-white shadow-sm"
+                    }`}
+                  >
+                    {isSendingGuestOtp ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {isSendingGuestOtp 
+                        ? "Sending..." 
+                        : guestOtpCooldown > 0 
+                        ? `Resend (${guestOtpCooldown}s)` 
+                        : isGuestOtpSent 
+                        ? "Resend Code" 
+                        : "Send Pass Code"}
+                    </span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-ink-soft">
+                  We'll send a 4-digit code to verify your email. Kindly check your Spam folder if needed.
+                </p>
+              </div>
+
+              {/* Mobile Phone (Optional) */}
+              <div className="space-y-1">
+                <label className="font-extrabold text-ink block text-[11px]">
+                  Mobile Number (Optional - for SMS alerts)
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+                  <input
+                    type="tel"
+                    value={guestPhone}
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                    className="w-full bg-surface border border-ink/15 rounded-xl pl-9 pr-3 py-2 text-xs text-ink placeholder-ink-soft/70 focus:outline-none focus:border-marigold font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* 4-Digit Pass OTP Code */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-ink block text-[11px]">
+                    4-Digit Verification Code *
+                  </label>
+                  {isGuestOtpSent && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Code Sent to Email
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <ShieldCheck className={`w-4 h-4 absolute left-3 top-2.5 ${isGuestOtpInvalid ? "text-chili" : "text-ink-soft"}`} />
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={guestOtp}
+                    onChange={(e) => {
+                      setGuestOtp(e.target.value);
+                      setIsGuestOtpInvalid(false);
+                    }}
+                    placeholder="Enter 4-digit code from email"
+                    className={`w-full bg-surface border rounded-xl pl-9 pr-3 py-2 text-xs text-ink placeholder-ink-soft/70 focus:outline-none tracking-widest font-mono font-bold ${
+                      isGuestOtpInvalid 
+                        ? "border-chili ring-1 ring-chili text-chili" 
+                        : "border-ink/15 focus:border-marigold"
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* 1-Day Validity Notice Banner */}
+              <div className="p-3 rounded-2xl bg-surface border border-marigold/25 text-ink space-y-1">
+                <div className="flex items-center gap-1.5 text-marigold font-extrabold text-[11px]">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>1-Day Pass Policy</span>
+                </div>
+                <p className="text-[10px] text-ink-soft leading-relaxed">
+                  This pass grants full access to browse stalls, order food, and make UPI payments for <strong>today only (expires at 11:59 PM)</strong>. Digital tokens and receipts will be delivered directly to your email.
+                </p>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isSubmittingGuest}
+                className="w-full bg-gradient-to-r from-marigold to-marigold-hover hover:opacity-95 active:scale-[0.99] py-3 text-xs font-black text-white rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+              >
+                {isSubmittingGuest ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Activating 1-Day Guest Pass...</span>
+                  </div>
+                ) : (
+                  <>
+                    <Ticket className="w-4 h-4" />
+                    <span>Activate 1-Day Guest Pass & Enter Canteen →</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
