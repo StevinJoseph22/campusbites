@@ -197,19 +197,43 @@ export default function StudentOrderConfirmationPage() {
           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
         </Link>
 
-        {/* Success Header Banner */}
-        <div className="card-surface p-6 space-y-2">
-          <div className="flex items-center gap-2 text-sage text-xs font-bold uppercase tracking-wider">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Order Secured & Paid via Cashfree</span>
-          </div>
-          <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">
-            Grab Your Tokens! Your Meal is on the Way!
-          </h1>
-          <p className="text-xs text-ink-soft leading-relaxed font-semibold">
-            We've sent a confirmation details mail to your student inbox. Keep an eye on the live status roadmap below to watch your food go from pan to pack!
-          </p>
-        </div>
+        {/* Header Banner — reflects the actual state of every portion, not a fixed "on the way" message */}
+        {(() => {
+          const allRefunded = order.vendorPortions.every(p => p.status === "REFUNDED");
+          const anyRefunded = order.vendorPortions.some(p => p.status === "REFUNDED");
+
+          if (allRefunded) {
+            return (
+              <div className="card-surface p-6 space-y-2 border-chili/30">
+                <div className="flex items-center gap-2 text-chili text-xs font-bold uppercase tracking-wider">
+                  <XCircle className="w-4 h-4" />
+                  <span>Order Cancelled & Refunded</span>
+                </div>
+                <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">
+                  This Order Was Rejected — No Pickup Needed
+                </h1>
+                <p className="text-xs text-ink-soft leading-relaxed font-semibold">
+                  Your payment has been refunded to your original Cashfree payment account. See the details below for each item.
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="card-surface p-6 space-y-2">
+              <div className="flex items-center gap-2 text-sage text-xs font-bold uppercase tracking-wider">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Order Secured & Paid via Cashfree</span>
+              </div>
+              <h1 className="font-display text-xl sm:text-2xl font-bold text-ink">
+                {anyRefunded ? "Some Items Were Unavailable — Check Details Below" : "Grab Your Tokens! Your Meal is on the Way!"}
+              </h1>
+              <p className="text-xs text-ink-soft leading-relaxed font-semibold">
+                We've sent a confirmation details mail to your student inbox. Keep an eye on the live status roadmap below to watch your food go from pan to pack!
+              </p>
+            </div>
+          );
+        })()}
 
         {/* SMS NOTIFICATION LOG STREAM */}
         {smsLogs.length > 0 && (
@@ -258,15 +282,17 @@ export default function StudentOrderConfirmationPage() {
 
                   {/* TOKEN NUMBER BADGE (TURNS SOLID SAGE UPON DELIVERY) */}
                   <div className="text-center sm:text-right">
-                    <span className="text-[10px] text-ink-soft uppercase font-bold tracking-wider block mb-1">Canteen Token Number</span>
+                    <span className="text-[10px] text-ink-soft uppercase font-bold tracking-wider block mb-1">
+                      {isRefunded ? "Cancelled Token (Not Valid for Pickup)" : "Canteen Token Number"}
+                    </span>
                     <div className={`px-5 py-2.5 rounded font-mono text-xl sm:text-2xl font-bold transition-all inline-block border-2 ${
                       isFulfilled
                         ? "bg-sage text-white border-sage"
                         : isRefunded
-                        ? "bg-chili-soft text-chili border-chili/40"
+                        ? "bg-chili-soft text-chili border-chili/40 line-through"
                         : "bg-marigold/10 border-marigold text-marigold"
                     }`}>
-                      {isFulfilled ? `✓ ${portion.tokenNumber} (DELIVERED)` : portion.tokenNumber}
+                      {isFulfilled ? `✓ ${portion.tokenNumber} (DELIVERED)` : isRefunded ? `${portion.tokenNumber} (CANCELLED)` : portion.tokenNumber}
                     </div>
                   </div>
                 </div>
