@@ -70,7 +70,8 @@ export default function StudentVendorPage() {
           );
           if (found) {
             setStall(found);
-            fetchMenuFromDatabase(found.id);
+            await fetchMenuFromDatabase(found.id);
+            setLoading(false);
             return;
           }
         }

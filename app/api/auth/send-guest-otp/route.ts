@@ -90,7 +90,7 @@ export async function POST(req: Request) {
       }
     });
 
-    console.log(`[GUEST AUTH LOG] Generated Guest OTP for ${cleanEmail} (${guestName} - ${guestCollege}): ${otpCode}`);
+    console.log(`[GUEST AUTH LOG] Guest OTP generated for ${cleanEmail} (${guestName} - ${guestCollege}) — sent via email, not logged in plaintext`);
 
     return NextResponse.json({
       success: true,

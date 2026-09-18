@@ -105,7 +105,7 @@ export async function POST(req: Request) {
     });
 
     // Log OTP to server console ONLY for developer convenience/verification
-    console.log(`[SECURITY BACKEND LOG] Generated OTP Code for ${cleanTargetEmail} is: ${otpCode}`);
+    console.log(`[SECURITY BACKEND LOG] OTP generated for ${cleanTargetEmail} (sent via email — not logged in plaintext)`);
 
     return NextResponse.json({
       success: true,
