@@ -249,21 +249,28 @@ export async function GET(req: Request) {
     });
 
     // Map DB items to front-end records
-    const mapped = items.map(o => ({
-      orderId: o.orderId,
-      stallId: o.stallId,
-      tokenNumber: o.tokenNumber,
-      stallName: o.stallName,
-      customerNotes: o.customerNotes || "No notes",
-      pickupTimeSlot: o.pickupTimeSlot,
-      items: JSON.parse(o.itemsJson),
-      subtotal: o.subtotal,
-      status: o.status,
-      studentName: o.order?.studentName || null,
-      studentRegNumber: o.order?.studentRegNumber || null,
-      placedAt: new Date(o.createdAt).toLocaleTimeString("en-IN", { hour: '2-digit', minute: '2-digit', timeZone: "Asia/Kolkata" }),
-      timestamp: new Date(o.createdAt).getTime()
-    }));
+    const mapped = items.map(o => {
+      const pkgFee = Number(o.order?.packagingFeeAmount) || 0;
+      const isTakeaway = pkgFee > 0;
+      return {
+        orderId: o.orderId,
+        stallId: o.stallId,
+        tokenNumber: o.tokenNumber,
+        stallName: o.stallName,
+        customerNotes: o.customerNotes || "No notes",
+        pickupTimeSlot: o.pickupTimeSlot,
+        items: JSON.parse(o.itemsJson),
+        subtotal: o.subtotal,
+        status: o.status,
+        orderType: isTakeaway ? "TAKEAWAY" : "DINE_IN",
+        isParcel: isTakeaway,
+        packagingFeeAmount: pkgFee,
+        studentName: o.order?.studentName || null,
+        studentRegNumber: o.order?.studentRegNumber || null,
+        placedAt: new Date(o.createdAt).toLocaleTimeString("en-IN", { hour: '2-digit', minute: '2-digit', timeZone: "Asia/Kolkata" }),
+        timestamp: new Date(o.createdAt).getTime()
+      };
+    });
 
     return NextResponse.json({ success: true, orders: mapped });
 

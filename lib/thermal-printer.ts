@@ -210,7 +210,7 @@ export function generateThermalSlipHtml(data: ThermalSlipData): string {
     ${data.studentName || data.studentRegNumber ? `
       <div><span class="bold">STUD:</span> ${escapeHtml(data.studentName || "")} ${data.studentRegNumber ? `(${escapeHtml(data.studentRegNumber)})` : ""}</div>
     ` : ""}
-    ${data.orderType ? `<div><span class="bold">TYPE:</span> ${escapeHtml(data.orderType)}</div>` : ""}
+    ${data.orderType ? `<div><span class="bold">TYPE:</span> <strong style="font-size: 11px;">${data.orderType === 'TAKEAWAY' ? '*** PARCEL / TAKEAWAY ***' : 'DINE-IN'}</strong></div>` : ""}
   </div>
 
   ${data.customerNotes ? `

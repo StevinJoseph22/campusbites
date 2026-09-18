@@ -30,6 +30,7 @@ interface DigitalReceiptProps {
   studentRegNumber?: string | null;
   placedAt?: string;
   paymentMethod?: string;
+  orderType?: string;
   status: string;
   onClose?: () => void;
   onFulfill?: () => void;
@@ -47,11 +48,13 @@ export function DigitalReceiptModal({
   studentRegNumber,
   placedAt = "12:15 PM",
   paymentMethod = "UPI",
+  orderType,
   status,
   onClose,
   onFulfill
 }: DigitalReceiptProps) {
   const isFulfilled = status === "FULFILLED" || status === "DELIVERED";
+  const isParcel = orderType === "TAKEAWAY";
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
@@ -77,14 +80,23 @@ export function DigitalReceiptModal({
           </div>
         </div>
 
-        {/* Status Stamp */}
-        <div className={`p-3 rounded-2xl border text-center text-xs font-bold flex items-center justify-center gap-2 ${
-          isFulfilled
-            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-            : "bg-amber-500/10 border-amber-500/30 text-amber-400"
-        }`}>
-          <ShieldCheck className="w-4 h-4" />
-          <span>{isFulfilled ? "✓ OFFICIAL RECEIPT — ORDER DELIVERED & BURNED" : `STATUS: ${status}`}</span>
+        {/* Status & Service Mode Stamps */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className={`flex-1 p-2.5 rounded-2xl border text-center text-xs font-bold flex items-center justify-center gap-2 ${
+            isFulfilled
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+              : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+          }`}>
+            <ShieldCheck className="w-4 h-4" />
+            <span>{isFulfilled ? "DELIVERED" : status}</span>
+          </div>
+          <div className={`px-3 py-2 rounded-2xl border text-center text-xs font-extrabold flex items-center justify-center gap-1.5 ${
+            isParcel
+              ? "bg-amber-500/15 border-amber-500/40 text-amber-400"
+              : "bg-blue-500/10 border-blue-500/30 text-blue-400"
+          }`}>
+            <span>{isParcel ? "📦 PARCEL / TAKEAWAY" : "🍽️ DINE-IN"}</span>
+          </div>
         </div>
 
         {/* Token Banner */}

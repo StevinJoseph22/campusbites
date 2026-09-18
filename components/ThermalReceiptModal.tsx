@@ -116,7 +116,14 @@ export function ThermalReceiptModal({
             {(order.studentName || order.studentRegNumber) && (
               <div><strong>STUD:</strong> {order.studentName || ""} ({order.studentRegNumber || "—"})</div>
             )}
-            {order.orderType && <div><strong>TYPE:</strong> {order.orderType}</div>}
+            {order.orderType && (
+              <div className="pt-0.5">
+                <strong>SERVICE:</strong>{" "}
+                <span className={`font-black px-1 rounded ${order.orderType === "TAKEAWAY" ? "bg-black text-white" : "border border-black"}`}>
+                  {order.orderType === "TAKEAWAY" ? "*** PARCEL / TAKEAWAY ***" : "DINE-IN"}
+                </span>
+              </div>
+            )}
           </div>
 
           {order.customerNotes && (

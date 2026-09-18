@@ -227,7 +227,10 @@ export default function CheckoutPage() {
         }
         
         const baseItemId = item.id.includes("::") ? item.id.split("::")[0] : item.id;
-        const dbItem = menuData.items.find((i: any) => i.id === baseItemId);
+        const dbItem = menuData.items.find((i: any) => 
+          i.id === baseItemId || 
+          (i.name && item.name && i.name.toLowerCase().trim() === item.name.toLowerCase().trim())
+        );
         if (!dbItem) {
           setErrorMessage(`⚠️ "${item.name}" is no longer on the canteen menu!`);
           setIsProcessing(false);

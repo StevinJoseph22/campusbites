@@ -158,25 +158,52 @@ export default function StudentDashboardPage() {
     // 1. Clear cart
     clearCart();
 
-    // 2. Loop portions and items to re-add to cart
-    for (const portion of order.vendorPortions) {
-      for (const item of portion.items) {
-        // Resolve item fields, generate a unique key
-        const generatedId = item.id || `re-${item.name.toLowerCase().replace(/\s+/g, '-')}`;
-        for (let q = 0; q < item.quantity; q++) {
-          addToCart({
-            id: generatedId,
-            name: item.name,
-            price: item.price,
-            stallId: portion.stallId,
-            stallName: portion.stallName,
-            stallInitials: portion.stallId.replace("vendor-", "STALL-"),
-            isVeg: true,
-            category: "Veg",
-            prepTime: "10 mins"
-          });
+    try {
+      // 2. Fetch live menus for each portion's stall to match exact dishes
+      for (const portion of order.vendorPortions || []) {
+        let menuItems: any[] = [];
+        try {
+          const res = await fetch(`/api/menu?restaurantId=${portion.stallId}`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.items)) {
+            menuItems = data.items;
+          }
+        } catch (e) {
+          console.warn("Could not fetch live menu for stall:", portion.stallId);
+        }
+
+        for (const item of portion.items || []) {
+          // Match by ID or by dish name (case-insensitive)
+          const matched = menuItems.find(
+            (m: any) => (item.id && m.id === item.id) || (m.name && item.name && m.name.toLowerCase().trim() === item.name.toLowerCase().trim())
+          );
+
+          const realId = matched?.id || item.id || `re-${item.name.toLowerCase().replace(/\s+/g, "-")}`;
+          const realPrice = matched ? Number(matched.price) : Number(item.price) || 0;
+          const realIsVeg = matched ? Boolean(matched.isVeg) : true;
+          const realCategory = matched?.category || "Veg";
+          const realPrepTime = matched?.prepTime ? `${matched.prepTime} mins` : "10 mins";
+          const isDineInOnly = matched ? Boolean(matched.isDineInOnly) : false;
+
+          for (let q = 0; q < (Number(item.quantity) || 1); q++) {
+            addToCart({
+              id: realId,
+              name: matched?.name || item.name,
+              price: realPrice,
+              stallId: portion.stallId,
+              stallName: portion.stallName,
+              stallInitials: portion.stallId.replace("vendor-", "STALL-"),
+              isVeg: realIsVeg,
+              category: realCategory,
+              prepTime: realPrepTime,
+              isDineInOnly: isDineInOnly,
+              campus: order.campus || selectedCampus || "Airport Road Campus"
+            });
+          }
         }
       }
+    } catch (e) {
+      console.error("Error during reorder:", e);
     }
 
     // 3. Direct to Cart

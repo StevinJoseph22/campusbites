@@ -19,7 +19,9 @@ import {
   Check,
   AlertTriangle,
   Printer,
-  Sliders
+  Sliders,
+  PackageCheck,
+  Utensils
 } from "lucide-react";
 import { ThermalReceiptModal } from "@/components/ThermalReceiptModal";
 import { PrinterSettingsModal } from "@/components/PrinterSettingsModal";
@@ -185,6 +187,7 @@ export default function VendorOrdersPage() {
     pickupTimeSlot: order.pickupTimeSlot,
     studentName: order.studentName,
     studentRegNumber: order.studentRegNumber,
+    orderType: order.orderType || (order.isParcel ? "TAKEAWAY" : "DINE_IN"),
     customerNotes: order.customerNotes,
     status: isCancellation ? "CANCELLED" : order.status,
     isCancellation,
@@ -410,18 +413,32 @@ export default function VendorOrdersPage() {
     </div>
   );
 
-  const OrderMeta = ({ order }: { order: VendorOrderRecord }) => (
-    <>
-      <p className="text-xs text-ink-soft">
-        Placed <strong className="text-ink">{order.placedAt || "just now"}</strong> · Slot <strong className="text-ink">{order.pickupTimeSlot}</strong>
-      </p>
-      {(order.studentName || order.studentRegNumber) && (
-        <p className="text-xs text-ink-soft">
-          {order.studentName || "—"} <span className="font-mono">({order.studentRegNumber || "—"})</span>
-        </p>
-      )}
-    </>
-  );
+  const OrderMeta = ({ order }: { order: VendorOrderRecord }) => {
+    const isParcelOrder = order.isParcel || order.orderType === "TAKEAWAY" || (order.packagingFeeAmount && order.packagingFeeAmount > 0);
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between flex-wrap gap-1.5">
+          <p className="text-xs text-ink-soft">
+            Placed <strong className="text-ink">{order.placedAt || "just now"}</strong> · Slot <strong className="text-ink">{order.pickupTimeSlot}</strong>
+          </p>
+          {isParcelOrder ? (
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-[10px] font-black tracking-wide flex items-center gap-1 shadow-sm">
+              <PackageCheck className="w-3.5 h-3.5" /> PARCEL / TAKEAWAY
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-md bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30 text-[10px] font-bold tracking-wide flex items-center gap-1">
+              <Utensils className="w-3.5 h-3.5" /> DINE-IN
+            </span>
+          )}
+        </div>
+        {(order.studentName || order.studentRegNumber) && (
+          <p className="text-xs text-ink-soft">
+            {order.studentName || "—"} <span className="font-mono">({order.studentRegNumber || "—"})</span>
+          </p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div suppressHydrationWarning className="min-h-screen bg-paper text-ink flex flex-col pb-12">
@@ -769,6 +786,7 @@ export default function VendorOrdersPage() {
           customerNotes={selectedReceiptOrder.customerNotes}
           studentName={selectedReceiptOrder.studentName}
           studentRegNumber={selectedReceiptOrder.studentRegNumber}
+          orderType={selectedReceiptOrder.orderType || (selectedReceiptOrder.isParcel ? "TAKEAWAY" : "DINE_IN")}
           status={selectedReceiptOrder.status}
           onClose={() => setSelectedReceiptOrder(null)}
           onFulfill={() => {

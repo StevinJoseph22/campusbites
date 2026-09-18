@@ -32,10 +32,21 @@ export interface ThermalSlipData {
   isCancellation?: boolean;
 }
 
-export type PrinterConnectionType = "NONE" | "SERIAL" | "BLUETOOTH" | "USB";
+export type PrinterConnectionType = "NONE" | "USB" | "SERIAL" | "BLUETOOTH" | "SYSTEM";
 export type PaperWidth = "58mm" | "80mm";
 
+export interface PairedPrinterInfo {
+  id: string;
+  name: string;
+  type: "USB" | "SERIAL" | "BLUETOOTH" | "SYSTEM";
+  details?: string;
+  nativeDevice?: any;
+}
+
 class HardwarePrinterManager {
+  private usbDevice: any = null;
+  private usbInterfaceNumber: number = 0;
+  private usbEndpointNumber: number = 1;
   private serialPort: any = null;
   private bluetoothDevice: any = null;
   private bluetoothCharacteristic: any = null;
@@ -43,12 +54,18 @@ class HardwarePrinterManager {
   private deviceName: string = "Not Connected";
   private paperWidth: PaperWidth = "58mm";
   private listeners: Array<() => void> = [];
+  private isConnecting: boolean = false;
 
   constructor() {
     if (typeof window !== "undefined") {
       const savedWidth = localStorage.getItem("campusbites_printer_paper_width") as PaperWidth;
       if (savedWidth === "58mm" || savedWidth === "80mm") {
         this.paperWidth = savedWidth;
+      }
+      const savedType = localStorage.getItem("campusbites_printer_type") as PrinterConnectionType;
+      if (savedType === "SYSTEM") {
+        this.connectionType = "SYSTEM";
+        this.deviceName = "Windows / OS Default Thermal Printer (Spooler Mode)";
       }
     }
   }
@@ -72,9 +89,9 @@ class HardwarePrinterManager {
       isConnected: this.connectionType !== "NONE",
       deviceName: this.deviceName,
       paperWidth: this.paperWidth,
+      isWebUsbSupported: typeof navigator !== "undefined" && "usb" in navigator,
       isWebSerialSupported: typeof navigator !== "undefined" && "serial" in navigator,
-      isWebBluetoothSupported: typeof navigator !== "undefined" && "bluetooth" in navigator,
-      isWebUsbSupported: typeof navigator !== "undefined" && "usb" in navigator
+      isWebBluetoothSupported: typeof navigator !== "undefined" && "bluetooth" in navigator
     };
   }
 
@@ -87,32 +104,287 @@ class HardwarePrinterManager {
   }
 
   /**
-   * Automatically try to reconnect to previously paired WebSerial port
+   * Set Windows / System Default Printer (Spooler Mode)
+   */
+  public setSystemPrinterMode(): void {
+    this.disconnect();
+    this.connectionType = "SYSTEM";
+    this.deviceName = "Windows / OS Default Thermal Printer (Spooler Mode)";
+    if (typeof window !== "undefined") {
+      localStorage.setItem("campusbites_printer_type", "SYSTEM");
+    }
+    this.notify();
+  }
+
+  /**
+   * Automatically try to reconnect to previously authorized USB or Serial devices
    */
   public async tryAutoReconnect(): Promise<boolean> {
-    if (typeof navigator === "undefined" || !("serial" in navigator)) return false;
-    try {
-      const ports = await (navigator as any).serial.getPorts();
-      if (ports && ports.length > 0) {
-        const port = ports[0];
-        await port.open({ baudRate: 9600 });
-        this.serialPort = port;
-        this.connectionType = "SERIAL";
-        const info = port.getInfo ? port.getInfo() : {};
-        this.deviceName = info.usbVendorId ? `USB POS Printer (VID:${info.usbVendorId.toString(16)})` : "Essae / USB Thermal Printer";
+    if (this.isConnecting) return false;
+    if (this.connectionType !== "NONE") return true;
+
+    if (typeof window !== "undefined") {
+      const savedType = localStorage.getItem("campusbites_printer_type");
+      if (savedType === "SYSTEM") {
+        this.connectionType = "SYSTEM";
+        this.deviceName = "Windows / OS Default Thermal Printer (Spooler Mode)";
         this.notify();
         return true;
       }
-    } catch (e) {
-      console.warn("Auto-reconnect serial printer:", e);
     }
+
+    this.isConnecting = true;
+    try {
+      // 1. Try WebUSB authorized devices
+      if (typeof navigator !== "undefined" && "usb" in navigator) {
+        try {
+          const usbDevices = await (navigator as any).usb.getDevices();
+          if (usbDevices && usbDevices.length > 0) {
+            const success = await this.connectPairedUsbDevice(usbDevices[0]);
+            if (success) return true;
+          }
+        } catch (e) {
+          console.warn("Auto-reconnect USB printer:", e);
+        }
+      }
+
+      // 2. Try WebSerial authorized ports
+      if (typeof navigator !== "undefined" && "serial" in navigator) {
+        try {
+          const ports = await (navigator as any).serial.getPorts();
+          if (ports && ports.length > 0) {
+            const port = ports[0];
+            try {
+              await port.open({ baudRate: 9600 });
+              this.serialPort = port;
+              this.connectionType = "SERIAL";
+              const info = port.getInfo ? port.getInfo() : {};
+              this.deviceName = info.usbVendorId ? `USB Serial Printer (VID:${info.usbVendorId.toString(16)})` : "Essae / USB POS Printer";
+              if (typeof window !== "undefined") localStorage.setItem("campusbites_printer_type", "SERIAL");
+              this.notify();
+              return true;
+            } catch (pErr) {}
+          }
+        } catch (e) {
+          console.warn("Auto-reconnect serial printer:", e);
+        }
+      }
+    } finally {
+      this.isConnecting = false;
+    }
+
     return false;
   }
 
   /**
-   * Pair USB / Serial Thermal Printer (Essae PR-55, TVS, Epson, Posiflex, NGX)
+   * Returns list of previously paired/authorized hardware devices
    */
-  public async pairSerialPrinter(baudRate: number = 9600): Promise<{ success: boolean; error?: string }> {
+  public async getPairedDevices(): Promise<PairedPrinterInfo[]> {
+    const list: PairedPrinterInfo[] = [];
+
+    // System mode
+    if (typeof window !== "undefined" && localStorage.getItem("campusbites_printer_type") === "SYSTEM") {
+      list.push({
+        id: "system-default",
+        name: "Windows / System Default Thermal Printer",
+        type: "SYSTEM",
+        details: "Instant silent browser print spooler"
+      });
+    }
+
+    // Query remembered USB devices
+    if (typeof navigator !== "undefined" && "usb" in navigator) {
+      try {
+        const usbDevices = await (navigator as any).usb.getDevices();
+        usbDevices.forEach((dev: any, idx: number) => {
+          const prodName = dev.productName || "Thermal Receipt Printer";
+          const mfg = dev.manufacturerName ? `${dev.manufacturerName} ` : "";
+          list.push({
+            id: `usb-${dev.vendorId}-${dev.productId}-${idx}`,
+            name: `${mfg}${prodName}`,
+            type: "USB",
+            details: `USB (VID: 0x${dev.vendorId ? dev.vendorId.toString(16) : 'N/A'}, PID: 0x${dev.productId ? dev.productId.toString(16) : 'N/A'})`,
+            nativeDevice: dev
+          });
+        });
+      } catch (e) {}
+    }
+
+    // Query remembered Serial ports
+    if (typeof navigator !== "undefined" && "serial" in navigator) {
+      try {
+        const serialPorts = await (navigator as any).serial.getPorts();
+        serialPorts.forEach((port: any, idx: number) => {
+          const info = port.getInfo ? port.getInfo() : {};
+          const vid = info.usbVendorId ? `VID: 0x${info.usbVendorId.toString(16)}` : "COM Port";
+          list.push({
+            id: `serial-${idx}`,
+            name: `Serial / COM Port Device #${idx + 1}`,
+            type: "SERIAL",
+            details: vid,
+            nativeDevice: port
+          });
+        });
+      } catch (e) {}
+    }
+
+    return list;
+  }
+
+  /**
+   * Connect to an already paired/remembered USB device with graceful error recovery
+   */
+  public async connectPairedUsbDevice(device: any): Promise<boolean> {
+    if (!device) return false;
+    
+    const prodName = device.productName || "USB Thermal Printer";
+    const mfgName = device.manufacturerName ? `${device.manufacturerName} ` : "";
+    const formattedName = `${mfgName}${prodName}`.trim();
+
+    try {
+      if (!device.opened) {
+        await device.open();
+      }
+
+      if (device.configuration === null) {
+        try {
+          await device.selectConfiguration(1);
+        } catch (cfgErr) {}
+      }
+
+      let targetIface = { interfaceNumber: 0 };
+      let outEp = { endpointNumber: 1 };
+
+      if (device.configuration && device.configuration.interfaces) {
+        for (const iface of device.configuration.interfaces) {
+          for (const alt of iface.alternates) {
+            for (const ep of alt.endpoints) {
+              if (ep.direction === "out" && ep.type === "bulk") {
+                targetIface = iface;
+                outEp = ep;
+                break;
+              }
+            }
+            if (outEp) break;
+          }
+          if (outEp) break;
+        }
+      }
+
+      try {
+        await device.claimInterface(targetIface.interfaceNumber);
+      } catch (e) {}
+
+      this.usbDevice = device;
+      this.usbInterfaceNumber = targetIface.interfaceNumber;
+      this.usbEndpointNumber = outEp.endpointNumber;
+      this.connectionType = "USB";
+      this.deviceName = formattedName || `USB Printer (VID:${device.vendorId.toString(16)})`;
+      if (typeof window !== "undefined") localStorage.setItem("campusbites_printer_type", "USB");
+      this.notify();
+      return true;
+    } catch (err: any) {
+      // If Windows kernel driver (usbprint.sys) locks the raw USB interface, gracefully fallback to Windows System Spooler mode
+      if (err.name === "SecurityError" || (err.message && err.message.toLowerCase().includes("access denied"))) {
+        console.info("Windows OS driver owns USB printer interface. Enabling Windows System Spooler mode for:", formattedName);
+        this.connectionType = "SYSTEM";
+        this.deviceName = `${formattedName} (Windows Driver Mode)`;
+        if (typeof window !== "undefined") localStorage.setItem("campusbites_printer_type", "SYSTEM");
+        this.notify();
+        return true;
+      }
+      
+      console.warn("Could not connect raw USB device, using system mode:", err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Pair Direct USB Thermal Printer (Scans all connected USB devices and shows actual printer names)
+   */
+  public async pairUsbPrinter(): Promise<{ success: boolean; deviceName?: string; error?: string }> {
+    if (typeof navigator === "undefined" || !("usb" in navigator)) {
+      return { success: false, error: "WebUSB is not supported in this browser. Please use Google Chrome or Microsoft Edge on Desktop." };
+    }
+
+    try {
+      // Request any USB device so that all connected thermal printers (POS-58, POS-80, Essae, TVS, Epson) are visible!
+      const device = await (navigator as any).usb.requestDevice({ filters: [] });
+      if (!device) {
+        return { success: false, error: "No USB printer was selected." };
+      }
+
+      const prodName = device.productName || "USB Thermal Receipt Printer";
+      const mfgName = device.manufacturerName ? `${device.manufacturerName} ` : "";
+      const formattedName = `${mfgName}${prodName}`.trim() || `USB Printer (VID:0x${device.vendorId ? device.vendorId.toString(16) : 'N/A'})`;
+
+      try {
+        if (!device.opened) {
+          await device.open();
+        }
+
+        if (device.configuration === null) {
+          try {
+            await device.selectConfiguration(1);
+          } catch (cfgErr) {}
+        }
+
+        let targetIface = { interfaceNumber: 0 };
+        let outEp = { endpointNumber: 1 };
+
+        if (device.configuration && device.configuration.interfaces) {
+          for (const iface of device.configuration.interfaces) {
+            for (const alt of iface.alternates) {
+              for (const ep of alt.endpoints) {
+                if (ep.direction === "out" && ep.type === "bulk") {
+                  targetIface = iface;
+                  outEp = ep;
+                  break;
+                }
+              }
+              if (outEp) break;
+            }
+            if (outEp) break;
+          }
+        }
+
+        try {
+          await device.claimInterface(targetIface.interfaceNumber);
+        } catch (claimErr) {}
+
+        this.usbDevice = device;
+        this.usbInterfaceNumber = targetIface.interfaceNumber;
+        this.usbEndpointNumber = outEp.endpointNumber;
+        this.connectionType = "USB";
+        this.deviceName = formattedName;
+
+        if (typeof window !== "undefined") localStorage.setItem("campusbites_printer_type", "USB");
+        this.notify();
+        return { success: true, deviceName: this.deviceName };
+      } catch (openErr: any) {
+        // If Windows kernel (usbprint.sys) restricts direct raw WebUSB claiming:
+        if (openErr.name === "SecurityError" || (openErr.message && openErr.message.toLowerCase().includes("access denied"))) {
+          this.connectionType = "SYSTEM";
+          this.deviceName = `${formattedName} (Windows Driver Mode)`;
+          if (typeof window !== "undefined") localStorage.setItem("campusbites_printer_type", "SYSTEM");
+          this.notify();
+          return {
+            success: true,
+            deviceName: this.deviceName
+          };
+        }
+        throw openErr;
+      }
+    } catch (err: any) {
+      console.error("Pairing USB printer error:", err);
+      return { success: false, error: err.message || "Failed to pair USB printer." };
+    }
+  }
+
+  /**
+   * Pair USB / Serial Thermal Printer via Virtual COM Port (Essae PR-55, TVS, Epson, Posiflex, NGX)
+   */
+  public async pairSerialPrinter(baudRate: number = 9600): Promise<{ success: boolean; deviceName?: string; error?: string }> {
     if (typeof navigator === "undefined" || !("serial" in navigator)) {
       return { success: false, error: "WebSerial is not supported in this browser. Use Google Chrome or MS Edge on Desktop." };
     }
@@ -124,19 +396,23 @@ class HardwarePrinterManager {
       this.connectionType = "SERIAL";
 
       const info = port.getInfo ? port.getInfo() : {};
-      this.deviceName = info.usbVendorId ? `USB Serial Printer (${info.usbVendorId.toString(16)})` : "Essae PR-55 / USB POS Printer";
+      const vid = info.usbVendorId ? `VID:0x${info.usbVendorId.toString(16)}` : "";
+      const pid = info.usbProductId ? ` PID:0x${info.usbProductId.toString(16)}` : "";
+      this.deviceName = vid ? `Serial POS Printer (${vid}${pid} @ ${baudRate} baud)` : `Serial POS Printer (COM @ ${baudRate} baud)`;
+
+      if (typeof window !== "undefined") localStorage.setItem("campusbites_printer_type", "SERIAL");
       this.notify();
-      return { success: true };
+      return { success: true, deviceName: this.deviceName };
     } catch (err: any) {
       console.error("Pairing serial printer error:", err);
-      return { success: false, error: err.message || "Failed to pair USB printer." };
+      return { success: false, error: err.message || "Failed to pair Serial / COM printer." };
     }
   }
 
   /**
-   * Pair Bluetooth Thermal Receipt Printer (58mm / 80mm wireless printers)
+   * Pair Bluetooth Thermal Receipt Printer (58mm / 80mm wireless POS printers)
    */
-  public async pairBluetoothPrinter(): Promise<{ success: boolean; error?: string }> {
+  public async pairBluetoothPrinter(): Promise<{ success: boolean; deviceName?: string; error?: string }> {
     if (typeof navigator === "undefined" || !("bluetooth" in navigator)) {
       return { success: false, error: "WebBluetooth is not supported in this browser." };
     }
@@ -174,9 +450,7 @@ class HardwarePrinterManager {
             }
           }
           if (writableChar) break;
-        } catch (sErr) {
-          // Continue scanning next service
-        }
+        } catch (sErr) {}
       }
 
       if (!writableChar) {
@@ -196,8 +470,9 @@ class HardwarePrinterManager {
         this.notify();
       });
 
+      if (typeof window !== "undefined") localStorage.setItem("campusbites_printer_type", "BLUETOOTH");
       this.notify();
-      return { success: true };
+      return { success: true, deviceName: this.deviceName };
     } catch (err: any) {
       console.error("Pairing bluetooth printer error:", err);
       return { success: false, error: err.message || "Failed to pair Bluetooth printer." };
@@ -209,6 +484,11 @@ class HardwarePrinterManager {
    */
   public async disconnect(): Promise<void> {
     try {
+      if (this.usbDevice && this.usbDevice.opened) {
+        await this.usbDevice.close();
+      }
+    } catch (e) {}
+    try {
       if (this.serialPort && this.serialPort.close) {
         await this.serialPort.close();
       }
@@ -219,11 +499,15 @@ class HardwarePrinterManager {
       }
     } catch (e) {}
 
+    this.usbDevice = null;
     this.serialPort = null;
     this.bluetoothDevice = null;
     this.bluetoothCharacteristic = null;
     this.connectionType = "NONE";
     this.deviceName = "Not Connected";
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("campusbites_printer_type");
+    }
     this.notify();
   }
 
@@ -231,7 +515,18 @@ class HardwarePrinterManager {
    * Send raw binary byte buffer to connected hardware printer
    */
   public async sendRawBytes(bytes: Uint8Array): Promise<{ success: boolean; method: string; error?: string }> {
-    // 1. Direct WebSerial (USB Virtual COM)
+    // 1. Direct WebUSB (Raw USB device endpoint)
+    if (this.connectionType === "USB" && this.usbDevice && this.usbDevice.opened) {
+      try {
+        await this.usbDevice.transferOut(this.usbEndpointNumber, bytes);
+        return { success: true, method: "USB" };
+      } catch (err: any) {
+        console.error("USB transferOut failed:", err);
+        return { success: false, method: "USB", error: err.message };
+      }
+    }
+
+    // 2. Direct WebSerial (USB Virtual COM)
     if (this.connectionType === "SERIAL" && this.serialPort && this.serialPort.writable) {
       try {
         const writer = this.serialPort.writable.getWriter();
@@ -244,7 +539,7 @@ class HardwarePrinterManager {
       }
     }
 
-    // 2. Direct WebBluetooth
+    // 3. Direct WebBluetooth
     if (this.connectionType === "BLUETOOTH" && this.bluetoothCharacteristic) {
       try {
         const CHUNK_SIZE = 100;
@@ -264,7 +559,11 @@ class HardwarePrinterManager {
       }
     }
 
-    // 3. Fallback: Hidden iframe
+    // 4. System mode
+    if (this.connectionType === "SYSTEM") {
+      return { success: true, method: "SYSTEM" };
+    }
+
     return { success: false, method: "NONE", error: "No hardware printer connected" };
   }
 
@@ -345,7 +644,12 @@ class HardwarePrinterManager {
     if (data.studentName || data.studentRegNumber) {
       chunks.push(...encoder.encode(`STUD : ${data.studentName || ""} ${data.studentRegNumber ? `(${data.studentRegNumber})` : ""}\n`));
     }
-    if (data.orderType) chunks.push(...encoder.encode(`TYPE : ${data.orderType}\n`));
+    if (data.orderType) {
+      const typeLabel = data.orderType === "TAKEAWAY" ? "*** PARCEL / TAKEAWAY ***" : "DINE-IN";
+      chunks.push(0x1B, 0x45, 0x01); // Bold ON
+      chunks.push(...encoder.encode(`TYPE : ${typeLabel}\n`));
+      chunks.push(0x1B, 0x45, 0x00); // Bold OFF
+    }
     if (data.customerNotes) {
       chunks.push(...encoder.encode(`NOTE : ${data.customerNotes}\n`));
     }
@@ -535,7 +839,7 @@ class HardwarePrinterManager {
     <div><span class="bold">TIME:</span> ${escapeXml(printTime)}</div>
     ${data.pickupTimeSlot ? `<div><span class="bold">SLOT:</span> ${escapeXml(data.pickupTimeSlot)}</div>` : ""}
     ${data.studentName ? `<div><span class="bold">STUD:</span> ${escapeXml(data.studentName)} (${escapeXml(data.studentRegNumber || "")})</div>` : ""}
-    ${data.orderType ? `<div><span class="bold">TYPE:</span> ${escapeXml(data.orderType)}</div>` : ""}
+    ${data.orderType ? `<div><span class="bold">TYPE:</span> <strong style="font-size:11px;">${data.orderType === 'TAKEAWAY' ? '*** PARCEL / TAKEAWAY ***' : 'DINE-IN'}</strong></div>` : ""}
     ${data.customerNotes ? `<div style="background:#eee; padding:2px;"><span class="bold">NOTE:</span> ${escapeXml(data.customerNotes)}</div>` : ""}
   </div>
 

@@ -17,6 +17,9 @@ export interface VendorOrderRecord {
   items: VendorOrderItem[];
   subtotal: number;
   status: "PLACED" | "CONFIRMED" | "READY" | "FULFILLED" | "REFUNDED" | "PARTIAL_HOLD";
+  orderType?: "TAKEAWAY" | "DINE_IN" | string;
+  isParcel?: boolean;
+  packagingFeeAmount?: number;
   placedAt?: string;
   timestamp?: number;
 }

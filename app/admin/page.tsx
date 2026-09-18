@@ -463,6 +463,51 @@ export default function SuperAdminPage() {
     r.campus.toLowerCase().includes(restaurantSearchQuery.toLowerCase())
   );
 
+  // Global Live Accounting Calculations (Strictly excluding refunds from gross & food charges, isolating refunds separately)
+  let totalValidFoodSales = 0;
+  let totalRefundedFoodSales = 0;
+  let totalValidParcelCharges = 0;
+  let totalRefundedParcelCharges = 0;
+  let totalValidPlatformFees = 0;
+  let totalValidConvenienceFees = 0;
+  let totalRefundedFees = 0;
+
+  filteredOrders.forEach(o => {
+    const isOrderRefunded = o.paymentStatus === "REFUNDED";
+    const pkgFee = Number(o.packagingFeeAmount) || 0;
+    const platFee = Number(o.platformFeeAmount) || 0;
+    const convFee = Number(o.convenienceFeeAmount) || 0;
+
+    if (isOrderRefunded) {
+      totalRefundedParcelCharges += pkgFee;
+      totalRefundedFees += (platFee + convFee);
+    } else {
+      totalValidParcelCharges += pkgFee;
+      totalValidPlatformFees += platFee;
+      totalValidConvenienceFees += convFee;
+    }
+
+    (o.vendorPortions || []).forEach((portion: any) => {
+      const isPortionRefunded = portion.status === "REFUNDED" || isOrderRefunded;
+      (portion.items || []).forEach((item: any) => {
+        const itemPrice = Number(item.price) || 0;
+        const itemQty = Number(item.quantity) || 1;
+        const itemTotal = itemPrice * itemQty;
+        const isItemOos = Boolean(item.outOfStock || item.refunded || isPortionRefunded);
+
+        if (isItemOos) {
+          totalRefundedFoodSales += itemTotal;
+        } else {
+          totalValidFoodSales += itemTotal;
+        }
+      });
+    });
+  });
+
+  const totalNetGrossSales = totalValidFoodSales + totalValidParcelCharges + totalValidPlatformFees + totalValidConvenienceFees;
+  const totalRefundedGrandTotal = totalRefundedFoodSales + totalRefundedParcelCharges + totalRefundedFees;
+  const totalRestaurantPayouts = totalValidFoodSales + totalValidParcelCharges;
+
   // 4-Sheet Excel Exporter with OOS Red Highlighting
   const handleExportToExcel = async () => {
     if (typeof window === "undefined") return;
@@ -501,25 +546,10 @@ export default function SuperAdminPage() {
       // SHEET 1: Financial Summary
       const summarySheet = workbook.addWorksheet("Financial Summary");
       summarySheet.columns = [
-        { header: "Metric / Financial Indicator", key: "Metric", width: 35 },
+        { header: "Metric / Financial Indicator", key: "Metric", width: 38 },
         { header: "Value (INR / Count)", key: "Value", width: 25 }
       ];
       applyHeaderStyle(summarySheet.getRow(1), "FF0F172A");
-
-      const totalGrossSales = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-      const totalFoodSales = filteredOrders.reduce((sum, o) => {
-        return sum + (o.vendorPortions || []).reduce((pSum: number, portion: any) => {
-          if (portion.status === "REFUNDED") return pSum;
-          return pSum + (portion.items || []).reduce((iSum: number, i: any) => {
-            if (i.outOfStock || i.refunded) return iSum;
-            return iSum + (Number(i.price) || 0) * (Number(i.quantity) || 1);
-          }, 0);
-        }, 0);
-      }, 0);
-      const totalTakeawayCharges = filteredOrders.reduce((sum, o) => sum + (o.packagingFeeAmount || 0), 0);
-      const totalPlatformFees = filteredOrders.reduce((sum, o) => sum + (o.platformFeeAmount || 0), 0);
-      const totalConvenienceFees = filteredOrders.reduce((sum, o) => sum + (o.convenienceFeeAmount || 0), 0);
-      const totalRestaurantPayouts = totalFoodSales + totalTakeawayCharges;
 
       const summaryRows = [
         ["Institution Name", currentInstitution.name],
@@ -527,13 +557,15 @@ export default function SuperAdminPage() {
         ["Report Period Start", startDate || "All Time"],
         ["Report Period End", endDate || "All Time"],
         ["Total Placed Orders", filteredOrders.length],
-        ["Gross Sales Revenue (INR)", `₹${totalGrossSales.toFixed(2)}`],
-        ["Total Food Item Sales (INR)", `₹${totalFoodSales.toFixed(2)}`],
-        ["Takeaway Packaging / Parcel Fees (INR)", `₹${totalTakeawayCharges.toFixed(2)}`],
+        ["Gross Sales Revenue (INR) [Net Retained, Excl. Refunds]", `₹${totalNetGrossSales.toFixed(2)}`],
+        ["Total Food Item Sales (INR) [Excl. Refunds]", `₹${totalValidFoodSales.toFixed(2)}`],
+        ["Refunded / Out-of-Stock Food Items (INR)", `₹${totalRefundedFoodSales.toFixed(2)}`],
+        ["Takeaway Packaging / Parcel Fees (INR)", `₹${totalValidParcelCharges.toFixed(2)}`],
         ["Total Net Restaurant Payouts (INR) [Items + Parcel]", `₹${totalRestaurantPayouts.toFixed(2)}`],
-        ["Platform Fee Collection (INR)", `₹${totalPlatformFees.toFixed(2)}`],
-        ["Convenience Fee Collection (INR)", `₹${totalConvenienceFees.toFixed(2)}`],
-        ["Total System Service Charges (INR) [Platform + Convenience]", `₹${(totalPlatformFees + totalConvenienceFees).toFixed(2)}`]
+        ["Total Refunded Amount to Customers (INR)", `₹${totalRefundedGrandTotal.toFixed(2)}`],
+        ["Platform Fee Collection (INR)", `₹${totalValidPlatformFees.toFixed(2)}`],
+        ["Convenience Fee Collection (INR)", `₹${totalValidConvenienceFees.toFixed(2)}`],
+        ["Total System Service Charges (INR) [Platform + Convenience]", `₹${(totalValidPlatformFees + totalValidConvenienceFees).toFixed(2)}`]
       ];
 
       summaryRows.forEach((r, idx) => {
@@ -619,13 +651,14 @@ export default function SuperAdminPage() {
       });
       autoFitColumns(restSheet);
 
-      // SHEET 3: Order Details (Out of Stock highlighted in red)
+      // SHEET 3: Order Details (Out of Stock highlighted in red, Parcel charge clearly stated)
       const detailsSheet = workbook.addWorksheet("Order Details & OOS Items");
       detailsSheet.columns = [
         { header: "Master Token", key: "masterToken", width: 18 },
         { header: "Order ID", key: "orderId", width: 22 },
         { header: "Placing Date/Time", key: "dateTime", width: 22 },
         { header: "Customer Identifier", key: "customer", width: 26 },
+        { header: "Service Mode", key: "serviceMode", width: 18 },
         { header: "Canteen Name", key: "stallName", width: 30 },
         { header: "Canteen Token", key: "tokenNumber", width: 18 },
         { header: "Pickup Slot", key: "pickupTimeSlot", width: 16 },
@@ -633,6 +666,7 @@ export default function SuperAdminPage() {
         { header: "Unit Price (INR)", key: "unitPrice", width: 16 },
         { header: "Quantity", key: "quantity", width: 12 },
         { header: "Dish Subtotal (INR)", key: "subtotal", width: 18 },
+        { header: "Parcel Charge (INR)", key: "parcelCharge", width: 18 },
         { header: "Item Status", key: "itemStatus", width: 24 },
         { header: "Portion Status", key: "portionStatus", width: 16 },
         { header: "Payment Status", key: "paymentStatus", width: 16 }
@@ -643,11 +677,13 @@ export default function SuperAdminPage() {
         const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : order.placedAt;
         const customerStr = order.studentRegNumber || order.studentName || order.email || "Student";
         const isOrderRefunded = order.paymentStatus === "REFUNDED";
+        const pkgFee = Number(order.packagingFeeAmount) || 0;
+        const serviceModeStr = pkgFee > 0 ? "PARCEL / TAKEAWAY" : "DINE-IN";
 
         (order.vendorPortions || []).forEach((portion: any) => {
           const isPortionRefunded = portion.status === "REFUNDED" || isOrderRefunded;
 
-          (portion.items || []).forEach((item: any) => {
+          (portion.items || []).forEach((item: any, itemIdx: number) => {
             const isOos = Boolean(item.outOfStock || item.refunded || isPortionRefunded);
             const itemStatusStr = isOos 
               ? "OUT OF STOCK / REFUNDED" 
@@ -660,6 +696,7 @@ export default function SuperAdminPage() {
               order.orderId,
               dateTimeStr,
               customerStr,
+              serviceModeStr,
               portion.stallName,
               portion.tokenNumber,
               portion.pickupTimeSlot,
@@ -667,6 +704,7 @@ export default function SuperAdminPage() {
               item.price,
               item.quantity,
               item.price * item.quantity,
+              itemIdx === 0 ? pkgFee : 0,
               itemStatusStr,
               portion.status,
               order.paymentStatus
@@ -698,8 +736,9 @@ export default function SuperAdminPage() {
         { header: "Order ID", key: "orderId", width: 22 },
         { header: "Date/Time", key: "dateTime", width: 22 },
         { header: "Customer", key: "customer", width: 24 },
+        { header: "Service Mode", key: "serviceMode", width: 18 },
         { header: "Food Subtotal (INR)", key: "foodSubtotal", width: 20 },
-        { header: "Packaging Fee (INR)", key: "packagingFee", width: 20 },
+        { header: "Parcel Fee (INR)", key: "packagingFee", width: 20 },
         { header: "Platform Fee (INR)", key: "platformFee", width: 18 },
         { header: "Convenience Fee (INR)", key: "convenienceFee", width: 22 },
         { header: "Total Service Fee (INR)", key: "totalServiceFee", width: 22 },
@@ -718,11 +757,12 @@ export default function SuperAdminPage() {
       filteredOrders.forEach(order => {
         const dateTimeStr = order.createdAt ? new Date(order.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : order.placedAt;
         const customerStr = order.studentRegNumber || order.studentName || order.email || "Student";
+        const pkgFee = Number(order.packagingFeeAmount) || 0;
+        const serviceModeStr = pkgFee > 0 ? "PARCEL / TAKEAWAY" : "DINE-IN";
         
         const foodSub = (order.vendorPortions || []).reduce((pSum: number, portion: any) => {
           return pSum + (portion.items || []).reduce((iSum: number, i: any) => iSum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
         }, 0);
-        const pkgFee = Number(order.packagingFeeAmount) || 0;
         const platFee = Number(order.platformFeeAmount) || 0;
         const convFee = Number(order.convenienceFeeAmount) || 0;
         const serviceFee = platFee + convFee;
@@ -740,6 +780,7 @@ export default function SuperAdminPage() {
           order.orderId,
           dateTimeStr,
           customerStr,
+          serviceModeStr,
           Number(foodSub.toFixed(2)),
           Number(pkgFee.toFixed(2)),
           Number(platFee.toFixed(2)),
@@ -754,6 +795,7 @@ export default function SuperAdminPage() {
       const feeTotalRow = feeSheet.addRow([
         "TOTAL",
         "ALL ORDERS SUM",
+        "-",
         "-",
         "-",
         Number(sumFoodSubtotal.toFixed(2)),
@@ -1243,64 +1285,69 @@ export default function SuperAdminPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total Revenue */}
-            <div className="bg-emerald-950/20 border border-emerald-500/20 p-5 rounded-2xl space-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+            {/* Net Total Revenue */}
+            <div className="bg-emerald-950/25 border border-emerald-500/30 p-4 rounded-2xl space-y-1">
               <span className="text-[9px] font-extrabold text-emerald-400 uppercase tracking-widest">Gross Sales (Total)</span>
-              <p className="text-2xl font-black text-emerald-400">
-                ₹{filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <p className="text-xl font-black text-emerald-400">
+                ₹{totalNetGrossSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">All item + packaging + platform fees</p>
+              <p className="text-[10px] text-slate-400 font-medium">Retained sales (excl. all refunds)</p>
             </div>
 
-            {/* Item Sales */}
-            <div className="bg-orange-950/20 border border-orange-500/20 p-5 rounded-2xl space-y-1">
+            {/* In-Stock Food Item Sales */}
+            <div className="bg-orange-950/25 border border-orange-500/30 p-4 rounded-2xl space-y-1">
               <span className="text-[9px] font-extrabold text-orange-400 uppercase tracking-widest">Food Item Charges</span>
-              <p className="text-2xl font-black text-orange-400">
-                ₹{filteredOrders.reduce((sum, o) => {
-                  return sum + o.vendorPortions.reduce((pSum: number, portion: any) => {
-                    return pSum + portion.items.reduce((iSum: number, i: any) => iSum + i.price * i.quantity, 0);
-                  }, 0);
-                }, 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <p className="text-xl font-black text-orange-400">
+                ₹{totalValidFoodSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">Direct restaurant food item sales</p>
+              <p className="text-[10px] text-slate-400 font-medium">Direct food sales (excl. refunds)</p>
+            </div>
+
+            {/* Refunded / Out of Stock Items */}
+            <div className="bg-red-950/25 border border-red-500/30 p-4 rounded-2xl space-y-1">
+              <span className="text-[9px] font-extrabold text-red-400 uppercase tracking-widest">Refunded / OOS Items</span>
+              <p className="text-xl font-black text-red-400">
+                ₹{totalRefundedFoodSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-[10px] text-slate-400 font-medium">Refunded for cancelled / OOS dishes</p>
             </div>
 
             {/* Parcel Charges */}
-            <div className="bg-blue-950/20 border border-blue-500/20 p-5 rounded-2xl space-y-1">
-              <span className="text-[9px] font-extrabold text-blue-400 uppercase tracking-widest">Parcel/Takeaway Charges</span>
-              <p className="text-2xl font-black text-blue-400">
-                ₹{filteredOrders.reduce((sum, o) => sum + (o.packagingFeeAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="bg-blue-950/25 border border-blue-500/30 p-4 rounded-2xl space-y-1">
+              <span className="text-[9px] font-extrabold text-blue-400 uppercase tracking-widest">Parcel Charges</span>
+              <p className="text-xl font-black text-blue-400">
+                ₹{totalValidParcelCharges.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">Accumulated container & package fees</p>
+              <p className="text-[10px] text-slate-400 font-medium">Takeaway container fees</p>
             </div>
 
             {/* Platform Fee */}
-            <div className="bg-purple-950/20 border border-purple-500/20 p-5 rounded-2xl space-y-1">
+            <div className="bg-purple-950/25 border border-purple-500/30 p-4 rounded-2xl space-y-1">
               <span className="text-[9px] font-extrabold text-purple-400 uppercase tracking-widest">Platform Fees ({platformFee}%)</span>
-              <p className="text-2xl font-black text-purple-400">
-                ₹{filteredOrders.reduce((sum, o) => sum + (o.platformFeeAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <p className="text-xl font-black text-purple-400">
+                ₹{totalValidPlatformFees.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">System platform fee revenue</p>
+              <p className="text-[10px] text-slate-400 font-medium">System platform revenue</p>
             </div>
 
             {/* Convenience Fee */}
-            <div className="bg-pink-950/20 border border-pink-500/20 p-5 rounded-2xl space-y-1">
+            <div className="bg-pink-950/25 border border-pink-500/30 p-4 rounded-2xl space-y-1">
               <span className="text-[9px] font-extrabold text-pink-400 uppercase tracking-widest">Convenience Fees ({convenienceFee}%)</span>
-              <p className="text-2xl font-black text-pink-400">
-                ₹{filteredOrders.reduce((sum, o) => sum + (o.convenienceFeeAmount || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <p className="text-xl font-black text-pink-400">
+                ₹{totalValidConvenienceFees.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">System convenience fee revenue</p>
+              <p className="text-[10px] text-slate-400 font-medium">Convenience fee revenue</p>
             </div>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-400">
+          <div className="bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-400">
             <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
               <CheckCircle2 className="w-4 h-4" />
               Accounting Ledger Balanced & Verified (No Errors)
             </span>
-            <span className="text-[11px] font-mono text-slate-500">
-              Total (₹{(filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0)).toFixed(2)}) = Items + Takeaway + Platform + Convenience
+            <span className="text-[11px] font-mono text-slate-400">
+              Net Gross (₹{totalNetGrossSales.toFixed(2)}) = Food Items (₹{totalValidFoodSales.toFixed(2)}) + Parcel (₹{totalValidParcelCharges.toFixed(2)}) + Platform (₹{totalValidPlatformFees.toFixed(2)}) + Convenience (₹{totalValidConvenienceFees.toFixed(2)}) | Total Refunded: ₹{totalRefundedGrandTotal.toFixed(2)}
             </span>
           </div>
         </div>
