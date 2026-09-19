@@ -72,6 +72,30 @@ export async function GET(req: Request) {
     const offersOnly = searchParams.get("offersOnly") === "true";
     const campus = searchParams.get("campus");
     const all = searchParams.get("all") === "true";
+    // Lite mode: drop the heavy base64 image/description/variants fields for
+    // callers that only poll for stock/availability (not rendering images) —
+    // these fields are what blow up Vercel's Fast Data Transfer on frequent polls.
+    const lite = searchParams.get("lite") === "true";
+    const liteSelect = {
+      id: true,
+      restaurantId: true,
+      name: true,
+      price: true,
+      category: true,
+      prepTime: true,
+      isVeg: true,
+      takeawayCharge: true,
+      stockCount: true,
+      stockType: true,
+      available: true,
+      availableFrom: true,
+      isBestseller: true,
+      offerType: true,
+      offerValue: true,
+      isDineInOnly: true,
+      createdAt: true,
+      updatedAt: true
+    };
 
     // 1. Fast Batch Query: Campus-wide Hot Deals / All Dishes (eliminates 15 sequential HTTP requests)
     if (offersOnly || all || !restaurantId) {
@@ -130,6 +154,7 @@ export async function GET(req: Request) {
           { restaurantId: resolvedId }
         ]
       },
+      ...(lite ? { select: liteSelect } : {}),
       orderBy: { createdAt: "desc" }
     });
 

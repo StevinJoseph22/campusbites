@@ -81,7 +81,7 @@ export default function VendorDashboardPage() {
 
     const fetchMenuFromDatabase = async (restaurantId: string) => {
       try {
-        const res = await fetch(`/api/menu?restaurantId=${restaurantId}`);
+        const res = await fetch(`/api/menu?restaurantId=${restaurantId}&lite=true`);
         const data = await res.json();
         if (data.success) {
           setMenuItems(data.items || []);
